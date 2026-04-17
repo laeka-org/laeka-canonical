@@ -10,6 +10,7 @@ What this is not: an AI safety manifesto, a prompt engineering collection, a cop
 
 - [`doctrine/`](doctrine/) -- core thesis, four perception lenses, anti-territory, metaprogramming rationale
 - [`benchmark/`](benchmark/) -- integrity benchmark proposal and evaluation methodology
+- [`methodology/`](methodology/) -- pre-publication maturation protocol (process paper, case study, templates)
 - [`lexique/`](lexique/) -- canonical vocabulary across five categories
 
 ## Why open source
