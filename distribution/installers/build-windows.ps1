@@ -1,0 +1,169 @@
+# build-windows.ps1 — Laeka Installer for Windows (PowerShell)
+#
+# Status: V1.5 — functional PowerShell installer (no GUI wizard yet)
+#         For a .exe wizard, see build-windows-inno.iss (requires Inno Setup)
+#
+# Usage (as admin or with elevation prompt):
+#   PowerShell -ExecutionPolicy Bypass -File build-windows.ps1
+#
+# To build a distributable .exe, use the Inno Setup compiler with
+# build-windows-inno.iss — it bundles this script into a one-click installer.
+
+param(
+    [switch]$Uninstall
+)
+
+$ErrorActionPreference = "Stop"
+
+# ── Config ────────────────────────────────────────────────────────────────────
+$LAEKA_REPO     = "https://github.com/laeka-org/laeka-canonical.git"
+$LAEKA_TARBALL  = "https://github.com/laeka-org/laeka-canonical/archive/refs/heads/main.tar.gz"
+$LAEKA_HOME     = "$env:USERPROFILE\laeka-canonical-distribution"
+$LAEKA_DIST     = "$LAEKA_HOME\distribution"
+$MEMORY_DIR     = "$env:USERPROFILE\.claude\projects\laeka\memory"
+$CLAUDE_SETTINGS= "$env:USERPROFILE\.claude\settings.json"
+$CLIENT_HOOK    = "$env:USERPROFILE\.claude\laeka-session-start.ps1"
+$TIMESTAMP      = Get-Date -Format "yyyyMMdd-HHmmss"
+$BACKUP_SUFFIX  = ".laeka-backup-$TIMESTAMP"
+
+function Write-Step { param($msg) Write-Host "[laeka] $msg" -ForegroundColor Cyan }
+function Write-OK   { param($msg) Write-Host "[laeka] OK  $msg" -ForegroundColor Green }
+function Write-Warn { param($msg) Write-Host "[laeka] WARN $msg" -ForegroundColor Yellow }
+function Write-Err  { param($msg) Write-Host "[laeka] ERR  $msg" -ForegroundColor Red }
+
+# ── Uninstall path ────────────────────────────────────────────────────────────
+if ($Uninstall) {
+    Write-Step "Uninstalling Laeka..."
+
+    # Remove hook from settings.json
+    if (Test-Path $CLAUDE_SETTINGS) {
+        $settings = Get-Content $CLAUDE_SETTINGS -Raw | ConvertFrom-Json
+        # Remove SessionStart hook entries referencing laeka
+        if ($settings.hooks.SessionStart) {
+            $settings.hooks.SessionStart[0].hooks = @(
+                $settings.hooks.SessionStart[0].hooks |
+                Where-Object { $_.command -notmatch "laeka" }
+            )
+            $settings | ConvertTo-Json -Depth 10 | Set-Content $CLAUDE_SETTINGS
+            Write-OK "Hook removed from settings.json"
+        }
+    }
+
+    if (Test-Path $CLIENT_HOOK)    { Remove-Item $CLIENT_HOOK -Force;    Write-OK "Hook script removed" }
+    if (Test-Path $MEMORY_DIR)     { Remove-Item $MEMORY_DIR -Recurse -Force; Write-OK "Memory removed" }
+    if (Test-Path $LAEKA_HOME)     { Remove-Item $LAEKA_HOME -Recurse -Force; Write-OK "Distribution removed" }
+
+    Write-Host ""
+    Write-Host "  Laeka has been uninstalled." -ForegroundColor Green
+    exit 0
+}
+
+# ── Step 0 — Preflight ────────────────────────────────────────────────────────
+Write-Step "Laeka Installer — Windows"
+
+# Claude Code
+$claude = Get-Command "claude" -ErrorAction SilentlyContinue
+if (-not $claude) {
+    Write-Err "Claude Code CLI not found. Install from: https://claude.ai/code"
+    exit 1
+}
+Write-OK "Claude Code found: $($claude.Source)"
+
+# settings.json
+if (-not (Test-Path $CLAUDE_SETTINGS)) {
+    Write-Err "~\.claude\settings.json not found. Launch Claude Code once first."
+    exit 1
+}
+Write-OK "settings.json found"
+
+# Git or curl
+$HAS_GIT  = $null -ne (Get-Command "git"  -ErrorAction SilentlyContinue)
+$HAS_CURL = $null -ne (Get-Command "curl" -ErrorAction SilentlyContinue)
+if (-not $HAS_GIT -and -not $HAS_CURL) {
+    Write-Err "git or curl required. Install Git for Windows: https://git-scm.com"
+    exit 1
+}
+
+# ── Step 1 — Download ─────────────────────────────────────────────────────────
+Write-Step "Downloading Laeka distribution..."
+
+if (Test-Path "$LAEKA_HOME\.git") {
+    Write-Step "Updating existing clone..."
+    git -C $LAEKA_HOME pull --quiet origin main
+    Write-OK "Updated"
+} elseif ($HAS_GIT) {
+    git clone --quiet --depth 1 $LAEKA_REPO $LAEKA_HOME
+    Write-OK "Cloned to $LAEKA_HOME"
+} else {
+    $tmp = [System.IO.Path]::GetTempFileName() + ".tar.gz"
+    Invoke-WebRequest -Uri $LAEKA_TARBALL -OutFile $tmp
+    New-Item -ItemType Directory -Force -Path $LAEKA_HOME | Out-Null
+    tar xzf $tmp --strip-components=1 -C $LAEKA_HOME
+    Remove-Item $tmp
+    Write-OK "Downloaded to $LAEKA_HOME"
+}
+
+# ── Step 2 — Install memory ───────────────────────────────────────────────────
+Write-Step "Installing Laeka memory..."
+New-Item -ItemType Directory -Force -Path $MEMORY_DIR | Out-Null
+
+if (Test-Path "$LAEKA_DIST\memory-public") {
+    Copy-Item "$LAEKA_DIST\memory-public\*" $MEMORY_DIR -Recurse -Force
+    $count = (Get-ChildItem $MEMORY_DIR -Filter "*.md").Count
+    Write-OK "Installed $count memory files → $MEMORY_DIR"
+} else {
+    Write-Warn "memory-public not found — skipping"
+}
+
+# ── Step 3 — Install SessionStart hook ───────────────────────────────────────
+Write-Step "Installing SessionStart hook..."
+
+@"
+# laeka-session-start.ps1 — Auto-generated by Laeka Installer
+`$dist = "`$env:USERPROFILE\laeka-canonical-distribution\distribution"
+`$verify = "`$dist\scripts\verify-canonical.sh"
+`$canonical = "`$dist\canonical-public.md"
+
+# Load canonical into session context
+if (Test-Path `$canonical) {
+    Write-Host ""
+    Get-Content `$canonical
+    Write-Host ""
+}
+"@ | Set-Content $CLIENT_HOOK
+
+Write-OK "Hook: $CLIENT_HOOK"
+
+# Register hook in settings.json
+$settings = Get-Content $CLAUDE_SETTINGS -Raw | ConvertFrom-Json
+$hookCmd   = "powershell -ExecutionPolicy Bypass -File $CLIENT_HOOK"
+$hookEntry = [PSCustomObject]@{ type = "command"; command = $hookCmd; timeout = 15 }
+
+$already = $false
+if ($settings.hooks.SessionStart) {
+    $already = $settings.hooks.SessionStart[0].hooks |
+               Where-Object { $_.command -match "laeka-session-start" }
+}
+
+if (-not $already) {
+    if (-not $settings.hooks) { $settings | Add-Member -NotePropertyName hooks -NotePropertyValue @{} }
+    if (-not $settings.hooks.SessionStart) {
+        $settings.hooks | Add-Member -NotePropertyName SessionStart -NotePropertyValue @(@{ hooks = @($hookEntry) })
+    } else {
+        $existing = @($settings.hooks.SessionStart[0].hooks)
+        $settings.hooks.SessionStart[0].hooks = @($hookEntry) + $existing
+    }
+    $settings | ConvertTo-Json -Depth 10 | Set-Content $CLAUDE_SETTINGS
+    Write-OK "Hook registered in settings.json"
+} else {
+    Write-OK "Hook already registered — skipping"
+}
+
+# ── Done ──────────────────────────────────────────────────────────────────────
+Write-Host ""
+Write-Host "  Laeka installed successfully." -ForegroundColor Green
+Write-Host "  Launch Claude Code — Laeka activates automatically." -ForegroundColor Cyan
+Write-Host ""
+Write-Host "  Update:     powershell -File $LAEKA_HOME\distribution\update-laeka.sh"
+Write-Host "  Uninstall:  powershell -File $PSCommandPath -Uninstall"
+Write-Host ""
