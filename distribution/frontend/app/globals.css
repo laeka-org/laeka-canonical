@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+/* ─── Laeka palette ────────────────────────────────────────────────
+   Gold #C8A96E on black (#0A0A0A), aligned with laeka.org.
+   ────────────────────────────────────────────────────────────────── */
+:root {
+  --color-bg: #0a0a0a;
+  --color-bg-elev: #141414;
+  --color-border: #2a2a2a;
+  --color-fg: #f5efe3;
+  --color-fg-muted: #9a9386;
+  --color-gold: #c8a96e;
+  --color-gold-dim: #8e774c;
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@theme inline {
+  --color-background: var(--color-bg);
+  --color-foreground: var(--color-fg);
+  --color-muted: var(--color-fg-muted);
+  --color-gold: var(--color-gold);
+  --color-gold-dim: var(--color-gold-dim);
+  --color-border-subtle: var(--color-border);
+  --color-bg-elev: var(--color-bg-elev);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+}
+
+body {
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-gold-dim);
+}
+
+::selection {
+  background: var(--color-gold);
+  color: var(--color-bg);
+}
