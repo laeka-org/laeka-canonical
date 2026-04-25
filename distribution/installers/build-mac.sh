@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
-# build-mac.sh — Build Laeka.pkg for macOS
+# build-mac.sh — Build Laeka.pkg for macOS (V2)
 #
-# Output: installers/Laeka.pkg  (double-click → Apple wizard → Laeka installed)
+# V2 changes vs V1:
+#   - Auto-installs Claude Code if not present (via claude.ai/install.sh)
+#   - Anthropic account onboarding wizard (browser guide + AppleScript dialogs)
+#   - claude login bridge (auth step in wizard)
+#   - Installs LaunchAgent for auto-start at login
+#   - Starts Laeka frontend (Next.js) and opens browser automatically
+#
+# Output: installers/Laeka.pkg  (double-click → Apple wizard → Laeka running in browser)
 # Requires: macOS with Xcode Command Line Tools (pkgbuild + productbuild)
 #
 # Optional signing (removes "unknown developer" warning):
 #   export SIGN_IDENTITY="Developer ID Installer: Your Name (XXXXXXXXXX)"
 #   ./build-mac.sh
-#
-# Without signing: user must right-click → Open, or allow in
-# System Settings → Privacy & Security after double-clicking.
 
 set -euo pipefail
 
@@ -17,9 +21,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIST_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUT_DIR="$SCRIPT_DIR"
-PKG_VERSION="1.0.0"
+PKG_VERSION="2.0.0"
 PKG_IDENTIFIER="ai.laeka.installer"
-SIGN_IDENTITY="${SIGN_IDENTITY:-}"  # optional: set before calling
+SIGN_IDENTITY="${SIGN_IDENTITY:-}"
 
 # ── Preflight ─────────────────────────────────────────────────────────────────
 for cmd in pkgbuild productbuild; do
@@ -37,6 +41,18 @@ for f in install-laeka.sh uninstall-laeka.sh update-laeka.sh; do
     fi
 done
 
+if [[ ! -f "$SCRIPT_DIR/laeka-v2-orchestrator.sh" ]]; then
+    echo "ERROR: Missing $SCRIPT_DIR/laeka-v2-orchestrator.sh"
+    exit 1
+fi
+
+for html in welcome.html conclusion.html onboarding-anthropic.html; do
+    if [[ ! -f "$SCRIPT_DIR/resources/$html" ]]; then
+        echo "ERROR: Missing $SCRIPT_DIR/resources/$html"
+        exit 1
+    fi
+done
+
 echo "[laeka-build] Building Laeka.pkg v${PKG_VERSION}..."
 WORK_DIR=$(mktemp -d /tmp/laeka-pkg-build-XXXXXX)
 trap 'rm -rf "$WORK_DIR"' EXIT
@@ -44,14 +60,21 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 # ── Payload: /usr/local/laeka/ ────────────────────────────────────────────────
 PAYLOAD_DIR="$WORK_DIR/payload"
 mkdir -p "$PAYLOAD_DIR/usr/local/laeka"
+
 cp "$DIST_DIR/install-laeka.sh"   "$PAYLOAD_DIR/usr/local/laeka/install.sh"
 cp "$DIST_DIR/uninstall-laeka.sh" "$PAYLOAD_DIR/usr/local/laeka/uninstall.sh"
 cp "$DIST_DIR/update-laeka.sh"    "$PAYLOAD_DIR/usr/local/laeka/update.sh"
+cp "$SCRIPT_DIR/laeka-v2-orchestrator.sh" "$PAYLOAD_DIR/usr/local/laeka/laeka-v2-orchestrator.sh"
+
+# Onboarding HTML served from payload so postinstall can open it
+cp "$SCRIPT_DIR/resources/onboarding-anthropic.html" "$PAYLOAD_DIR/usr/local/laeka/onboarding-anthropic.html"
+
 chmod 755 "$PAYLOAD_DIR/usr/local/laeka/"*.sh
-echo "[laeka-build] Payload: /usr/local/laeka/ with install/uninstall/update"
+chmod 644 "$PAYLOAD_DIR/usr/local/laeka/"*.html
+echo "[laeka-build] Payload: /usr/local/laeka/ with install/uninstall/update/orchestrator/onboarding"
 
 # ── postinstall script ────────────────────────────────────────────────────────
-# Runs as root — detects logged-in user, delegates to install.sh as that user.
+# Runs as root — detects logged-in user, delegates to orchestrator as that user.
 SCRIPTS_DIR="$WORK_DIR/scripts"
 mkdir -p "$SCRIPTS_DIR"
 
@@ -59,7 +82,7 @@ cat > "$SCRIPTS_DIR/postinstall" << 'POSTINSTALL'
 #!/usr/bin/env bash
 set -euo pipefail
 
-LOG="/tmp/laeka-install-$(date +%Y%m%d-%H%M%S).log"
+LOG="/tmp/laeka-v2-install-$(date +%Y%m%d-%H%M%S).log"
 
 # Detect the currently logged-in user (pkg runs as root)
 CURRENT_USER=$(stat -f "%Su" /dev/console 2>/dev/null || true)
@@ -71,25 +94,19 @@ if [[ -z "$CURRENT_USER" ]]; then
     exit 1
 fi
 
-echo "[laeka] Installing for user: $CURRENT_USER" | tee -a "$LOG"
+echo "[laeka] V2 — Installing for user: $CURRENT_USER" | tee -a "$LOG"
 echo "[laeka] Log: $LOG" | tee -a "$LOG"
 
-# Run install.sh as the actual user (not root)
-su -l "$CURRENT_USER" -c "bash /usr/local/laeka/install.sh" >> "$LOG" 2>&1
+# Delegate all user-space work to the orchestrator
+su -l "$CURRENT_USER" -c "bash /usr/local/laeka/laeka-v2-orchestrator.sh '$LOG'" >> "$LOG" 2>&1
 EXIT_CODE=$?
 
-if [[ $EXIT_CODE -ne 0 ]]; then
-    # Show log on failure
-    su -l "$CURRENT_USER" -c "open -a TextEdit '$LOG'" &
-    echo "[laeka] Installation failed. Log: $LOG" | tee -a "$LOG"
-    exit $EXIT_CODE
-fi
-
-echo "[laeka] Installation complete. Log: $LOG" | tee -a "$LOG"
-
-# Copy log to user's Desktop for visibility
 USER_HOME=$(eval echo "~$CURRENT_USER")
-cp "$LOG" "$USER_HOME/Desktop/laeka-install.log" 2>/dev/null || true
+cp "$LOG" "$USER_HOME/Desktop/laeka-v2-install.log" 2>/dev/null || true
+
+if [[ $EXIT_CODE -ne 0 ]]; then
+    echo "[laeka] Setup had issues. See: $USER_HOME/Desktop/laeka-v2-install.log" | tee -a "$LOG"
+fi
 
 exit 0
 POSTINSTALL
@@ -111,7 +128,7 @@ fi
 pkgbuild "${PKGBUILD_ARGS[@]}" "$PKG_COMPONENT"
 echo "[laeka-build] Component package built"
 
-# ── Resources (welcome/conclusion HTML) ───────────────────────────────────────
+# ── Resources (welcome/conclusion HTML for installer GUI) ─────────────────────
 RESOURCES_DIR="$WORK_DIR/resources"
 mkdir -p "$RESOURCES_DIR"
 cp "$SCRIPT_DIR/resources/welcome.html"    "$RESOURCES_DIR/welcome.html"
@@ -121,7 +138,7 @@ cp "$SCRIPT_DIR/resources/conclusion.html" "$RESOURCES_DIR/conclusion.html"
 cat > "$WORK_DIR/distribution.xml" << DISTXML
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="2">
-    <title>Laeka for Claude Code</title>
+    <title>Laeka</title>
     <organization>ai.laeka</organization>
     <domains enable_localSystem="true" enable_currentUserHome="false"/>
     <options customize="never" require-scripts="false" rootVolumeOnly="true"/>
@@ -157,10 +174,11 @@ fi
 productbuild "${PRODUCTBUILD_ARGS[@]}" "$OUT_PKG"
 
 echo ""
-echo "✓ Built: $OUT_PKG"
+echo "✓ Built: $OUT_PKG  (v${PKG_VERSION})"
 echo ""
-echo "  Distribute: share Laeka.pkg directly (GitHub release, website download)"
-echo "  Install:    double-click Laeka.pkg"
+echo "  V2 flow: Claude Code auto-install → Anthropic wizard → claude login → Laeka → frontend"
+echo "  Distribute: share Laeka.pkg directly (GitHub release, laeka.ai/download)"
+echo "  Install:    double-click Laeka.pkg (no terminal required)"
 if [[ -z "$SIGN_IDENTITY" ]]; then
     echo ""
     echo "  ⚠ Not signed — users must allow in System Settings → Privacy & Security"

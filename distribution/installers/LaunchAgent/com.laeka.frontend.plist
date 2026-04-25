@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.laeka.frontend.plist — LaunchAgent template (reference)
+
+  NOTE: This file is a template. The actual installed plist is written
+  dynamically by laeka-v2-orchestrator.sh with real paths resolved at
+  install time. Do not load this template directly.
+
+  Installed to: ~/Library/LaunchAgents/com.laeka.frontend.plist
+  Manages: auto-start of the Laeka frontend (Next.js dev server) at user login
+
+  To manage manually:
+    launchctl load  ~/Library/LaunchAgents/com.laeka.frontend.plist
+    launchctl unload ~/Library/LaunchAgents/com.laeka.frontend.plist
+    launchctl start com.laeka.frontend
+    launchctl stop  com.laeka.frontend
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.laeka.frontend</string>
+
+    <!-- Full path required — launchd does not expand $HOME -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>cd "/Users/YOURNAME/laeka-canonical-distribution/distribution/frontend" &amp;&amp; /usr/local/bin/npm run dev &gt;&gt; /tmp/laeka-frontend.log 2&gt;&amp;1</string>
+    </array>
+
+    <!-- Start when user logs in -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Do not restart if it crashes (Next.js dev server is ephemeral) -->
+    <key>KeepAlive</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/laeka-frontend.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/laeka-frontend.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>/Users/YOURNAME</string>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+</dict>
+</plist>

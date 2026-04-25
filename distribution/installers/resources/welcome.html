@@ -10,43 +10,72 @@
     font-size: 13px;
     line-height: 1.6;
   }
-  h1 { font-size: 18px; font-weight: 600; margin: 0 0 12px; color: #000; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 10px; color: #000; }
   p  { margin: 8px 0; }
   ul { padding-left: 20px; margin: 8px 0; }
-  li { margin: 4px 0; }
-  .note {
+  li { margin: 5px 0; }
+  .steps {
     background: #f5f5f7;
     border-radius: 8px;
-    padding: 10px 14px;
-    margin-top: 16px;
+    padding: 12px 16px;
+    margin: 14px 0;
+  }
+  .steps p {
+    margin: 0 0 6px;
+    font-weight: 600;
     font-size: 12px;
-    color: #555;
+    color: #333;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .steps ol { padding-left: 18px; margin: 0; }
+  .steps li { margin: 4px 0; color: #444; font-size: 12px; }
+  .note {
+    background: #fff8e6;
+    border: 1px solid #f0d88a;
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-top: 14px;
+    font-size: 12px;
+    color: #7a5e00;
+  }
+  code {
+    background: #e8e8ed;
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 11px;
+    font-family: "SF Mono", Menlo, monospace;
   }
 </style>
 </head>
 <body>
-  <h1>Laeka for Claude Code</h1>
-  <p>This installer will set up <strong>Laeka</strong> — the canonical identity layer for Claude Code.</p>
+  <h1>Welcome to Laeka</h1>
+  <p>This installer sets up <strong>Laeka</strong> — your personal AI, running locally on your Mac.</p>
+  <p>The installer handles everything automatically. You do not need to open Terminal.</p>
 
-  <p><strong>What gets installed:</strong></p>
-  <ul>
-    <li>Laeka canonical distribution (<code>~/laeka-canonical-distribution/</code>)</li>
-    <li>Laeka memory files (<code>~/.claude/projects/laeka/memory/</code>)</li>
-    <li>SessionStart hook — Laeka loads automatically when you open Claude Code</li>
-  </ul>
+  <div class="steps">
+    <p>What happens next</p>
+    <ol>
+      <li>Install Claude Code (if needed)</li>
+      <li>Guide you through creating your Anthropic account</li>
+      <li>Connect Claude Code to your account</li>
+      <li>Install the Laeka knowledge base</li>
+      <li>Start the Laeka chat interface in your browser</li>
+    </ol>
+  </div>
 
   <p><strong>Requirements:</strong></p>
   <ul>
-    <li>Claude Code must be installed and launched at least once</li>
-    <li>Internet connection (downloads from GitHub)</li>
     <li>macOS 12 or later</li>
+    <li>Internet connection</li>
+    <li>An Anthropic account (Claude Pro or Max subscription) — the installer will help you create one</li>
   </ul>
 
-  <p>Click <strong>Continue</strong> to proceed.</p>
+  <p>Click <strong>Continue</strong> to begin. The setup takes 3–5 minutes.</p>
 
   <div class="note">
-    Installation takes 30–60 seconds depending on your connection.
-    A log will be placed on your Desktop when complete.
+    A setup log will be placed on your Desktop when complete.<br/>
+    Laeka will start automatically each time you log in to your Mac.
   </div>
 </body>
 </html>

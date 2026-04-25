@@ -10,39 +10,68 @@
     font-size: 13px;
     line-height: 1.6;
   }
-  h1 { font-size: 18px; font-weight: 600; margin: 0 0 12px; color: #1a8f1a; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 8px; color: #1a8f1a; }
   p  { margin: 8px 0; }
   ul { padding-left: 20px; margin: 8px 0; }
-  li { margin: 4px 0; }
+  li { margin: 5px 0; }
+  code {
+    background: #e8e8ed;
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 11px;
+    font-family: "SF Mono", Menlo, monospace;
+  }
+  .url-box {
+    background: #f0f7ff;
+    border: 1px solid #c0d8f0;
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin: 14px 0;
+    font-size: 13px;
+    color: #1155aa;
+    font-family: "SF Mono", Menlo, monospace;
+    font-weight: 600;
+  }
   .note {
     background: #f0fff0;
     border-radius: 8px;
     padding: 10px 14px;
-    margin-top: 16px;
+    margin-top: 14px;
     font-size: 12px;
     color: #2d6a2d;
   }
-  .support { margin-top: 20px; font-size: 12px; color: #555; }
+  .support { margin-top: 18px; font-size: 12px; color: #555; }
 </style>
 </head>
 <body>
-  <h1>✓ Laeka Installed Successfully</h1>
-  <p>Laeka is now active on your machine.</p>
+  <h1>&#10003; Laeka Installed Successfully</h1>
+  <p>Laeka is now running on your Mac.</p>
 
-  <p><strong>Next steps:</strong></p>
+  <p><strong>Your chat is available at:</strong></p>
+  <div class="url-box">http://localhost:8080/laeka</div>
+
+  <p><strong>Next time you log in:</strong></p>
   <ul>
-    <li>Open <strong>Claude Code</strong> — Laeka loads automatically at session start</li>
-    <li>Check your Desktop for <code>laeka-install.log</code> if you want to review details</li>
+    <li>Laeka starts automatically — just open your browser and go to <code>http://localhost:8080/laeka</code></li>
+  </ul>
+
+  <p><strong>To check the install log:</strong></p>
+  <ul>
+    <li>Look for <code>laeka-v2-install.log</code> on your Desktop</li>
   </ul>
 
   <div class="note">
-    If Claude Code was open during installation, restart it for Laeka to activate.
+    If the chat doesn't open automatically, wait 30 seconds and visit
+    <strong>http://localhost:8080/laeka</strong> in your browser.
   </div>
 
   <p><strong>To uninstall Laeka:</strong></p>
   <ul>
     <li>Open Terminal and run:<br/>
         <code>bash /usr/local/laeka/uninstall.sh</code></li>
+    <li>Then remove the LaunchAgent:<br/>
+        <code>launchctl unload ~/Library/LaunchAgents/com.laeka.frontend.plist</code><br/>
+        <code>rm ~/Library/LaunchAgents/com.laeka.frontend.plist</code></li>
   </ul>
 
   <div class="support">

@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Create Your Anthropic Account — Laeka Setup</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    background: #0A0A0A;
+    color: #e8e8e8;
+    margin: 0;
+    padding: 32px 40px;
+    min-height: 100vh;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  .badge {
+    display: inline-block;
+    background: #C8A96E22;
+    border: 1px solid #C8A96E55;
+    color: #C8A96E;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    padding: 3px 10px;
+    border-radius: 20px;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+  }
+  h1 {
+    font-size: 26px;
+    font-weight: 700;
+    color: #fff;
+    margin: 0 0 8px;
+    letter-spacing: -0.02em;
+  }
+  .subtitle {
+    color: #888;
+    font-size: 14px;
+    margin: 0 0 32px;
+  }
+  .steps {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 32px;
+  }
+  .steps li {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 20px;
+    align-items: flex-start;
+  }
+  .step-num {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #C8A96E;
+    color: #0A0A0A;
+    font-size: 13px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 1px;
+  }
+  .step-body strong {
+    display: block;
+    color: #fff;
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+  .step-body span {
+    color: #999;
+    font-size: 13px;
+  }
+  .cta-block {
+    background: #111;
+    border: 1px solid #222;
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 24px;
+  }
+  .cta-block p {
+    margin: 0 0 14px;
+    color: #bbb;
+    font-size: 13px;
+  }
+  .btn {
+    display: inline-block;
+    background: #C8A96E;
+    color: #0A0A0A;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 10px 22px;
+    border-radius: 8px;
+    text-decoration: none;
+    margin-right: 10px;
+    margin-bottom: 8px;
+  }
+  .btn:hover { background: #d4b87a; }
+  .btn-secondary {
+    display: inline-block;
+    background: transparent;
+    border: 1px solid #444;
+    color: #bbb;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 10px 22px;
+    border-radius: 8px;
+    text-decoration: none;
+    margin-bottom: 8px;
+  }
+  .note {
+    background: #0d1a0d;
+    border: 1px solid #1a3a1a;
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 12px;
+    color: #6a9f6a;
+    margin-top: 24px;
+  }
+  .plans {
+    display: flex;
+    gap: 12px;
+    margin: 16px 0;
+    flex-wrap: wrap;
+  }
+  .plan {
+    flex: 1;
+    min-width: 160px;
+    background: #111;
+    border: 1px solid #222;
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .plan .plan-name {
+    font-weight: 600;
+    color: #fff;
+    font-size: 14px;
+    margin-bottom: 2px;
+  }
+  .plan .plan-price {
+    color: #C8A96E;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .plan .plan-note {
+    color: #666;
+    font-size: 11px;
+  }
+</style>
+</head>
+<body>
+  <div class="badge">Laeka Setup — Step 1 of 3</div>
+  <h1>Create Your Anthropic Account</h1>
+  <p class="subtitle">You need an Anthropic account with a Claude subscription to use Laeka.</p>
+
+  <ul class="steps">
+    <li>
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <strong>Go to Anthropic.com</strong>
+        <span>Click the button below to open the signup page.</span>
+      </div>
+    </li>
+    <li>
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <strong>Create a free account</strong>
+        <span>Enter your email, verify it, and set a password.</span>
+      </div>
+    </li>
+    <li>
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <strong>Choose a Claude subscription</strong>
+        <span>Claude Pro or Max gives you the full Laeka experience.</span>
+      </div>
+    </li>
+    <li>
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <strong>Return to the installer dialog</strong>
+        <span>Once subscribed, go back to the setup wizard and click OK.</span>
+      </div>
+    </li>
+  </ul>
+
+  <div class="cta-block">
+    <p>Open the Anthropic signup page in your browser:</p>
+    <a class="btn" href="https://anthropic.com" target="_blank">Go to Anthropic.com</a>
+    <a class="btn-secondary" href="https://claude.ai/upgrade" target="_blank">Manage Subscription</a>
+  </div>
+
+  <p style="color:#888; font-size:13px; margin-bottom:12px;">Choose a plan:</p>
+  <div class="plans">
+    <div class="plan">
+      <div class="plan-name">Claude Pro</div>
+      <div class="plan-price">$20 / month</div>
+      <div class="plan-note">Good for light daily use</div>
+    </div>
+    <div class="plan">
+      <div class="plan-name">Claude Max</div>
+      <div class="plan-price">$100–$200 / month</div>
+      <div class="plan-note">For heavy use &amp; power users</div>
+    </div>
+  </div>
+
+  <div class="note">
+    Once subscribed, return to the setup dialog on your screen and click <strong>OK</strong> to continue.
+    This page will close automatically when setup is complete.
+  </div>
+</body>
+</html>

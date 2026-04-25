@@ -2,10 +2,11 @@
 
 One-click installers for non-technical users. No terminal required.
 
-## macOS — Laeka.pkg (V1 — priority)
+## macOS — Laeka.pkg (V2)
 
 ### What it does
-Double-click → Apple Installer wizard → Laeka installed and active in Claude Code.
+Double-click → Apple Installer wizard → **full no-terminal setup**:
+Claude Code auto-install → Anthropic account wizard → claude login → Laeka knowledge base → frontend auto-launch in browser.
 
 ### Build
 
@@ -42,18 +43,37 @@ export SIGN_IDENTITY="Developer ID Installer: Your Name (XXXXXXXXXX)"
 
 | Path | Content |
 |------|---------|
-| `/usr/local/laeka/install.sh` | Main install script |
+| `/usr/local/laeka/install.sh` | Laeka distribution installer |
 | `/usr/local/laeka/uninstall.sh` | Uninstaller |
 | `/usr/local/laeka/update.sh` | Updater |
+| `/usr/local/laeka/laeka-v2-orchestrator.sh` | V2 setup orchestrator |
+| `/usr/local/laeka/onboarding-anthropic.html` | Anthropic signup guide |
 | `~/laeka-canonical-distribution/` | Canonical distribution (downloaded) |
 | `~/.claude/projects/laeka/memory/` | Laeka memory files |
 | `~/.claude/laeka-session-start.sh` | SessionStart hook |
+| `~/Library/LaunchAgents/com.laeka.frontend.plist` | Auto-start frontend at login |
+
+### V2 Setup Flow (end-user)
+
+1. User double-clicks `Laeka.pkg`
+2. Apple Installer welcome screen explains the flow
+3. Installer runs — no terminal required:
+   - Detects / installs Claude Code silently
+   - Opens Anthropic signup guide in browser + dialog prompt
+   - Runs `claude login` (opens browser OAuth)
+   - Downloads and installs Laeka canonical distribution
+   - Runs `npm install` in the frontend directory
+   - Installs LaunchAgent for auto-start at login
+   - Starts Next.js frontend + opens `http://localhost:8080/laeka`
+4. User sees Laeka chat ready in browser
 
 ### Uninstall
 
 Users open Terminal and run:
 ```bash
 bash /usr/local/laeka/uninstall.sh
+launchctl unload ~/Library/LaunchAgents/com.laeka.frontend.plist
+rm ~/Library/LaunchAgents/com.laeka.frontend.plist
 ```
 
 ---
