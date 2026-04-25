@@ -7,16 +7,21 @@ type Props = {
   params: Promise<{ clientName: string }>;
 };
 
+const ALLOWED_CLIENTS = new Set([clientConfig.clientName, "bhairava"]);
+
 export default async function ClientChatPage({ params }: Props) {
   const { clientName } = await params;
 
-  if (clientName !== clientConfig.clientName) {
+  if (!ALLOWED_CLIENTS.has(clientName)) {
     notFound();
   }
 
+  const userName =
+    clientName === "bhairava" ? "Bhairava" : clientConfig.userName;
+
   return (
     <ThinkerShell clientName={clientName}>
-      <ChatPanel userName={clientConfig.userName} />
+      <ChatPanel userName={userName} clientName={clientName} />
     </ThinkerShell>
   );
 }

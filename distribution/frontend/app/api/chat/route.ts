@@ -31,7 +31,7 @@ function sseDone(): Uint8Array {
 }
 
 export async function POST(request: NextRequest) {
-  let body: { messages?: ChatMessage[] };
+  let body: { messages?: ChatMessage[]; clientName?: string };
   try {
     body = await request.json();
   } catch {
@@ -65,11 +65,18 @@ export async function POST(request: NextRequest) {
     args.push("--model", model);
   }
 
+  // Bhairava route → public sanitized HOME (no Saphi PII, only ontological corpus)
+  // Other routes → process HOME (full Laeka with private memories)
+  const isBhairava = body.clientName === "bhairava";
+  const subprocessEnv = isBhairava
+    ? { ...process.env, HOME: "/tmp/laeka-public-home" }
+    : { ...process.env };
+
   const readable = new ReadableStream({
     start(controller) {
       const child = spawn("claude", args, {
         stdio: ["pipe", "pipe", "pipe"],
-        env: { ...process.env },
+        env: subprocessEnv,
       });
 
       child.stdin.write(prompt, "utf8");

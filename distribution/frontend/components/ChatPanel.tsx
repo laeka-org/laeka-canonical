@@ -9,9 +9,10 @@ export type Message = {
 
 type Props = {
   userName?: string;
+  clientName?: string;
 };
 
-export function ChatPanel({ userName }: Props) {
+export function ChatPanel({ userName, clientName }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -46,6 +47,7 @@ export function ChatPanel({ userName }: Props) {
           messages: next
             .slice(0, -1)
             .map((m) => ({ role: m.role, content: m.content })),
+          clientName,
         }),
       });
 
