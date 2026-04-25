@@ -64,7 +64,20 @@ POST /api/chat
   └─ client reads SSE and appends to chat
 ```
 
-Conversation history is passed inline with each request — no database, no auth, trust local network (V1).
+Conversation history is passed inline with each request — no database, no auth, trust local network.
+
+## Persistence
+
+Conversations are saved in `localStorage` per client:
+- Key: `laeka_chat_<clientName>` (e.g. `laeka_chat_saphi`, `laeka_chat_bhairava`)
+- Auto-saved after each complete exchange (not during streaming)
+- Restored on page load — "CONTINUED FROM <date>" banner shown
+- **NEW CONVERSATION** button (bottom-right of input bar) clears and resets
+- Graceful fallback: if localStorage is missing/corrupt, starts fresh
+
+Limitations:
+- Per-browser only — not synced across devices
+- ~5-10 MB per origin; very long conversations (1000+ messages) may approach limit (V2: optional Supabase sync)
 
 ## Future: voice integration
 

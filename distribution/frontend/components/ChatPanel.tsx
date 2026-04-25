@@ -7,23 +7,105 @@ export type Message = {
   content: string;
 };
 
+type StoredConversation = {
+  messages: Message[];
+  lastUpdated: string;
+};
+
 type Props = {
   userName?: string;
   clientName?: string;
 };
 
+function storageKey(clientName?: string) {
+  return `laeka_chat_${clientName || "default"}`;
+}
+
+function loadConversation(clientName?: string): StoredConversation | null {
+  try {
+    const raw = localStorage.getItem(storageKey(clientName));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as StoredConversation;
+    if (!Array.isArray(parsed.messages)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function saveConversation(messages: Message[], clientName?: string) {
+  try {
+    const data: StoredConversation = {
+      messages,
+      lastUpdated: new Date().toISOString(),
+    };
+    localStorage.setItem(storageKey(clientName), JSON.stringify(data));
+  } catch {
+    // localStorage may be full or unavailable — silent fail
+  }
+}
+
+function clearConversation(clientName?: string) {
+  try {
+    localStorage.removeItem(storageKey(clientName));
+  } catch {
+    // silent
+  }
+}
+
+function formatRestoredDate(isoString: string): string {
+  try {
+    return new Date(isoString).toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  } catch {
+    return isoString;
+  }
+}
+
 export function ChatPanel({ userName, clientName }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [restoredDate, setRestoredDate] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Load from localStorage on mount (or when clientName changes)
+  useEffect(() => {
+    const stored = loadConversation(clientName);
+    if (stored && stored.messages.length > 0) {
+      setMessages(stored.messages);
+      setRestoredDate(stored.lastUpdated);
+    } else {
+      setMessages([]);
+      setRestoredDate(null);
+    }
+  }, [clientName]);
+
+  // Save to localStorage after each complete exchange (guard: skip during streaming)
+  useEffect(() => {
+    if (streaming || messages.length === 0) return;
+    const last = messages[messages.length - 1];
+    if (last?.role === "assistant" && last.content === "") return;
+    saveConversation(messages, clientName);
+  }, [messages, streaming, clientName]);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, streaming]);
+
+  function startNewConversation() {
+    if (!confirm("Clear this conversation and start fresh?")) return;
+    clearConversation(clientName);
+    setMessages([]);
+    setRestoredDate(null);
+    setError(null);
+  }
 
   async function send() {
     const text = input.trim();
@@ -149,6 +231,14 @@ export function ChatPanel({ userName, clientName }: Props) {
             </div>
           )}
 
+          {messages.length > 0 && restoredDate && (
+            <div className="text-center">
+              <p className="font-mono text-[10px] tracking-widest text-[var(--color-fg-muted)] opacity-50">
+                CONTINUED FROM {formatRestoredDate(restoredDate).toUpperCase()}
+              </p>
+            </div>
+          )}
+
           {messages.map((m, i) => (
             <div
               key={i}
@@ -208,9 +298,20 @@ export function ChatPanel({ userName, clientName }: Props) {
             {streaming ? "…" : "Send"}
           </button>
         </div>
-        <p className="mt-2 text-center font-mono text-[10px] tracking-widest text-[var(--color-fg-muted)]">
-          ENTER · SEND · SHIFT+ENTER · NEWLINE
-        </p>
+        <div className="mt-2 flex items-center justify-between max-w-3xl mx-auto">
+          <p className="font-mono text-[10px] tracking-widest text-[var(--color-fg-muted)]">
+            ENTER · SEND · SHIFT+ENTER · NEWLINE
+          </p>
+          {messages.length > 0 && (
+            <button
+              type="button"
+              onClick={startNewConversation}
+              className="font-mono text-[10px] tracking-widest text-[var(--color-fg-muted)] hover:text-[var(--color-gold)] transition-colors"
+            >
+              NEW CONVERSATION
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
