@@ -1,23 +1,23 @@
-# Laeka Canonical -- A metaprogrammable substrate for integral AI
+# Laeka Canonical -- code distribution for the Laeka system
 
-Laeka is an open-source research lab working on one thesis: **intelligence converges toward integrity by structural necessity**. This repository contains the canonical doctrine, benchmark methodology, and shared vocabulary that define what that means in practice.
+Laeka is a private research lab working on one thesis: **intelligence converges toward integrity by structural necessity**. This repository distributes the **code** used to install, run, and operate the Laeka system: installers, scripts, MCP servers, frontend, and hooks examples.
 
-This is not a framework, a library, or a product. It is a working document -- a substrate that other researchers, practitioners, and builders can fork, critique, extend, or reject. If you find contradictions, open an issue. The canon corrects itself through contact with reality.
+The methodology, canonical doctrine, benchmark protocol, and shared vocabulary are developed by the lab and are not distributed in this repository.
 
-What this is not: an AI safety manifesto, a prompt engineering collection, a copilot layer, an AI assistant definition, a guardrail specification. The lab's position on those categories is documented in `doctrine/03-anti-territory.md`.
+What this is not: an AI safety manifesto, a prompt engineering collection, a copilot layer, an AI assistant definition, a guardrail specification.
 
 ## Structure
 
-- [`doctrine/`](doctrine/) -- core thesis, four perception lenses, anti-territory, metaprogramming rationale
-- [`benchmark/`](benchmark/) -- integrity benchmark proposal and evaluation methodology
-- [`methodology/`](methodology/) -- pre-publication maturation protocol (process paper, case study, templates)
-- [`lexique/`](lexique/) -- canonical vocabulary across five categories
+- [`distribution/installers/`](distribution/installers/) -- Mac and Linux installers
+- [`distribution/scripts/`](distribution/scripts/) -- helper scripts (sync, update, uninstall)
+- [`distribution/frontend/`](distribution/frontend/) -- frontend code for Laeka surfaces
+- [`distribution/templates/`](distribution/templates/) -- onboarding contact templates
 
-## Why open source
+## License scope
 
-The central thesis is that intelligence converges toward integrity. A lab that closes its methods contradicts that thesis. The code is not the moat -- the practice is. Open source is not a business strategy here; it is structural coherence.
+Code in this repository is MIT licensed. Methodology and canonical content are not distributed.
 
-All content in this repository is MIT licensed. Fork it, self-host it, redistribute it. The only thing that cannot be copied directly is the practice of applying it with integrity -- and that is learned by doing, not by reading.
+The MIT license applies to: install scripts, build scripts, MCP servers, frontend code, and hooks examples. It does not apply to any methodology, canonical, or corpus content (none distributed in this repo).
 
 ## Attribution
 
@@ -25,9 +25,7 @@ Certain structural patterns in the broader Laeka codebase (JSONL parsing, propri
 
 ## Credits
 
-Research and doctrine: the Bhairava ([laeka.org](https://laeka.org))
-
-Model: open core -- the canonical is shared, the practice of running it at scale with integrity is what the lab offers as a service.
+Distribution maintainer: the Bhairava ([laeka.org](https://laeka.org))
 
 ---
 

@@ -26,7 +26,7 @@ No formal review committee. The maintainer (the Bhairava, laeka.org) reviews con
 
 ## License
 
-All contributions are MIT licensed. By opening a PR, you agree that your contribution can be used, modified, and redistributed under the same terms as the rest of the repository.
+Code contributions are MIT licensed. Methodology contributions are not accepted -- the methodology, canonical doctrine, benchmark protocol, and lexique are developed privately by the lab and are not distributed in this repository. By opening a code PR, you agree that your contribution can be used, modified, and redistributed under the same terms as the rest of the code in this repository.
 
 ## A note on integrity in practice
 
