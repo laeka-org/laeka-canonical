@@ -1,104 +1,101 @@
 #!/usr/bin/env bash
-# verify-canonical.sh — Laeka canonical integrity check
-# Exit 0: all files match manifest. Exit 1: corruption detected.
-# Exit 2: manifest or required tool missing. Exit 3: lock disabled.
+# verify-canonical.sh — Laeka canonical integrity audit (Phase B).
+#
+# Reads the local manifest at ~/.claude/projects/laeka/.canonical-manifest.json
+# and verifies each file in ~/.claude/projects/laeka/memory/ against its hash.
+#
+# Exit 0: all files match
+# Exit 1: integrity violation
+# Exit 2: missing manifest or required tool
+# Exit 3: lock disabled (admin override)
+#
+# Run anytime with: bash verify-canonical.sh
 
-set -euo pipefail
+set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DIST_DIR="$(dirname "$SCRIPT_DIR")"
-MANIFEST="$DIST_DIR/canonical-manifest.json"
-DISABLE_FLAG="$SCRIPT_DIR/.lock-disabled"
+LAEKA_STATE="$HOME/.claude/projects/laeka"
+LOCAL_MANIFEST="$LAEKA_STATE/.canonical-manifest.json"
+MEMORY_DIR="$LAEKA_STATE/memory"
+DISABLE_FLAG="$LAEKA_STATE/.lock-disabled"
 
-# Respect disable flag (admin override)
+# Admin override
 if [[ -f "$DISABLE_FLAG" ]]; then
     echo "[laeka-lock] Lock disabled by admin ($(cat "$DISABLE_FLAG")). Skipping verification." >&2
     exit 3
 fi
 
-# Require manifest
-if [[ ! -f "$MANIFEST" ]]; then
-    echo "[laeka-lock] MISSING: canonical-manifest.json not found at $MANIFEST" >&2
-    echo "[laeka-lock] Cannot verify integrity. Restore from official Laeka distribution." >&2
-    exit 2
-fi
-
-# Require jq
+# Tool checks
 if ! command -v jq &>/dev/null; then
-    echo "[laeka-lock] MISSING: jq is required. Install with: brew install jq" >&2
+    echo "[laeka-lock] MISSING: jq required. Install with: brew install jq (macOS) or apt-get install jq (Linux)" >&2
     exit 2
 fi
 
-# Cross-platform sha256
-sha256_file() {
-    local file="$1"
+if ! command -v sha256sum &>/dev/null && ! command -v shasum &>/dev/null; then
+    echo "[laeka-lock] MISSING: sha256sum or shasum required" >&2
+    exit 2
+fi
+
+if [[ ! -f "$LOCAL_MANIFEST" ]]; then
+    echo "[laeka-lock] MISSING: local manifest at $LOCAL_MANIFEST" >&2
+    echo "[laeka-lock] Run: bash install-laeka.sh (or update-canonical.sh) to install canonical." >&2
+    exit 2
+fi
+
+if [[ ! -d "$MEMORY_DIR" ]]; then
+    echo "[laeka-lock] MISSING: memory dir at $MEMORY_DIR" >&2
+    exit 2
+fi
+
+sha256() {
     if command -v sha256sum &>/dev/null; then
-        sha256sum "$file" | awk '{print $1}'
-    elif command -v shasum &>/dev/null; then
-        shasum -a 256 "$file" | awk '{print $1}'
+        sha256sum "$1" | awk '{print $1}'
     else
-        echo "[laeka-lock] MISSING: sha256sum or shasum required" >&2
-        exit 2
+        shasum -a 256 "$1" | awk '{print $1}'
     fi
 }
 
-FAILED=0
-CHECKED=0
-VIOLATIONS=()
+VERSION=$(jq -r '.version' "$LOCAL_MANIFEST")
+EXPECTED_GLOBAL=$(jq -r '.global_hash' "$LOCAL_MANIFEST")
 
-# Check each file listed in manifest
-while IFS= read -r relpath; do
-    expected_hash=$(jq -r ".files[\"$relpath\"]" "$MANIFEST")
-    fullpath="$DIST_DIR/$relpath"
+# Verify each file
+FAILS=0
+TOTAL=0
+while IFS= read -r entry; do
+    rel=$(echo "$entry" | jq -r '.key')
+    expected=$(echo "$entry" | jq -r '.value')
 
-    if [[ ! -f "$fullpath" ]]; then
-        VIOLATIONS+=("MISSING: $relpath")
-        FAILED=1
+    # The bundle layout puts canonical-public.md at root and memory-public/* under memory-public/.
+    # Locally, install-laeka.sh flattens them into MEMORY_DIR (canonical-public.md at root,
+    # memory-public/*.md unpacked into MEMORY_DIR root).
+    if [[ "$rel" == "canonical-public.md" ]]; then
+        local_file="$MEMORY_DIR/canonical-public.md"
+    elif [[ "$rel" == memory-public/* ]]; then
+        local_file="$MEMORY_DIR/${rel#memory-public/}"
+    else
+        local_file="$MEMORY_DIR/$rel"
+    fi
+
+    TOTAL=$((TOTAL + 1))
+    if [[ ! -f "$local_file" ]]; then
+        echo "[laeka-lock] MISSING: $rel (expected at $local_file)" >&2
+        FAILS=$((FAILS + 1))
         continue
     fi
-
-    actual_hash=$(sha256_file "$fullpath")
-    ((CHECKED++)) || true
-
-    if [[ "$actual_hash" != "$expected_hash" ]]; then
-        VIOLATIONS+=("CORRUPTED: $relpath")
-        FAILED=1
+    actual=$(sha256 "$local_file")
+    if [[ "$actual" != "$expected" ]]; then
+        echo "[laeka-lock] HASH MISMATCH: $rel" >&2
+        echo "  expected: ${expected:0:16}..." >&2
+        echo "  actual:   ${actual:0:16}..." >&2
+        FAILS=$((FAILS + 1))
     fi
-done < <(jq -r '.files | keys[]' "$MANIFEST")
+done < <(jq -c '.files | to_entries[]' "$LOCAL_MANIFEST")
 
-# Verify global hash
-if [[ $FAILED -eq 0 ]]; then
-    # Recompute global hash using same algorithm as update-canonical.sh
-    global_input=$(jq -r '.files | to_entries | sort_by(.key) | .[] | "\(.value)  \(.key)"' "$MANIFEST")
-    if command -v sha256sum &>/dev/null; then
-        actual_global=$(echo "$global_input" | sha256sum | awk '{print $1}')
-    else
-        actual_global=$(echo "$global_input" | shasum -a 256 | awk '{print $1}')
-    fi
-    expected_global=$(jq -r '.global_hash' "$MANIFEST")
-
-    if [[ "$actual_global" != "$expected_global" ]]; then
-        VIOLATIONS+=("CORRUPTED: canonical-manifest.json (global_hash mismatch — manifest itself tampered)")
-        FAILED=1
-    fi
-fi
-
-if [[ $FAILED -ne 0 ]]; then
+if [[ $FAILS -gt 0 ]]; then
     echo "" >&2
-    echo "╔══════════════════════════════════════════════════════════╗" >&2
-    echo "║         LAEKA CANONICAL INTEGRITY VIOLATED               ║" >&2
-    echo "╚══════════════════════════════════════════════════════════╝" >&2
-    echo "" >&2
-    echo "The following protected files have been modified or are missing:" >&2
-    for v in "${VIOLATIONS[@]}"; do
-        echo "  • $v" >&2
-    done
-    echo "" >&2
-    echo "Cannot start. Restore from official Laeka distribution." >&2
-    echo "Documentation: $DIST_DIR/LOCK-MECHANISM.md" >&2
-    echo "" >&2
+    echo "[laeka-lock] LAEKA CANONICAL INTEGRITY VIOLATED — $FAILS / $TOTAL files mismatch (v$VERSION)" >&2
+    echo "[laeka-lock] Restore: bash $HOME/laeka-canonical-distribution/distribution/update-canonical.sh" >&2
     exit 1
 fi
 
-echo "[laeka-lock] Canonical integrity verified. $CHECKED files OK." >&2
+echo "[laeka-lock] Verified: $TOTAL files match canonical v$VERSION"
 exit 0

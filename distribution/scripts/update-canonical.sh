@@ -1,141 +1,152 @@
 #!/usr/bin/env bash
-# update-canonical.sh — Admin tool to publish a new canonical version
-# Recomputes all hashes and updates canonical-manifest.json
-# V1: trust-based (no GPG). V2 target: GPG/Sigstore signing.
+# update-canonical.sh — Phase B client tool: refresh canonical from server.
 #
-# Usage: ./update-canonical.sh [--version X.Y.Z] [--signed-by "Author YYYY-MM-DD"]
+# Replaces the previous admin-publish version (which now lives in
+# laeka-canonical-private/admin/publish-canonical.py).
+#
+# Reads the persisted install_token, refreshes session, fetches manifest+bundle,
+# verifies hashes, atomically swaps the local memory dir.
+#
+# Usage:
+#   bash update-canonical.sh
+#   # or with explicit version:
+#   bash update-canonical.sh --version 1.2.0
+#
+# Requires: jq, curl, tar, sha256sum (Linux) or shasum (macOS).
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DIST_DIR="$(dirname "$SCRIPT_DIR")"
-MANIFEST="$DIST_DIR/canonical-manifest.json"
+LAEKA_API_BASE="${LAEKA_API_BASE:-https://laeka.ai}"
+LAEKA_STATE="$HOME/.claude/projects/laeka"
+INSTALL_TOKEN_FILE="$LAEKA_STATE/.install-token"
+LOCAL_MANIFEST="$LAEKA_STATE/.canonical-manifest.json"
+MACHINE_UUID_FILE="$LAEKA_STATE/.machine-uuid"
+MEMORY_DIR="$LAEKA_STATE/memory"
 
-# Parse args
-VERSION=""
-SIGNED_BY=""
+# ── Output helpers ────────────────────────────────────────────────────────────
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
+info() { echo -e "${CYAN}[laeka]${NC} $*"; }
+ok()   { echo -e "${GREEN}[laeka] ✓${NC} $*"; }
+warn() { echo -e "${YELLOW}[laeka] ⚠${NC} $*" >&2; }
+err()  { echo -e "${RED}[laeka] ✗${NC} $*" >&2; }
 
+sha256() {
+    if command -v sha256sum &>/dev/null; then
+        sha256sum "$1" | awk '{print $1}'
+    elif command -v shasum &>/dev/null; then
+        shasum -a 256 "$1" | awk '{print $1}'
+    else
+        err "sha256sum or shasum required" && exit 1
+    fi
+}
+
+# ── Args ──────────────────────────────────────────────────────────────────────
+TARGET_VERSION="latest"
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --version) VERSION="$2"; shift 2 ;;
-        --signed-by) SIGNED_BY="$2"; shift 2 ;;
-        *) echo "Unknown arg: $1" >&2; exit 1 ;;
+        --version) TARGET_VERSION="$2"; shift 2 ;;
+        --help) echo "Usage: bash update-canonical.sh [--version X.Y.Z]"; exit 0 ;;
+        *) err "Unknown arg: $1"; exit 1 ;;
     esac
 done
 
-# Require jq
-if ! command -v jq &>/dev/null; then
-    echo "ERROR: jq is required. Install with: brew install jq" >&2
+# ── Preflight ─────────────────────────────────────────────────────────────────
+[[ -f "$INSTALL_TOKEN_FILE" ]] || { err "No install token found. Re-run install-laeka.sh."; exit 1; }
+[[ -f "$MACHINE_UUID_FILE" ]] || { err "No machine UUID. Re-run install-laeka.sh."; exit 1; }
+command -v jq &>/dev/null || { err "jq required"; exit 1; }
+command -v curl &>/dev/null || { err "curl required"; exit 1; }
+
+INSTALL_TOKEN=$(cat "$INSTALL_TOKEN_FILE")
+MACHINE_UUID=$(cat "$MACHINE_UUID_FILE")
+
+# ── Refresh session ───────────────────────────────────────────────────────────
+info "Refreshing session..."
+REFRESH_RESP=$(curl -fsS -X POST "$LAEKA_API_BASE/v1/brain/auth/installer-refresh" \
+    -H "Content-Type: application/json" \
+    -d "$(jq -n --arg t "$INSTALL_TOKEN" --arg m "$MACHINE_UUID" '{install_token: $t, machine_uuid: $m}')") || {
+    err "Refresh failed. Install token may be expired (>30 days). Re-run install-laeka.sh to re-authenticate."
     exit 1
-fi
-
-# Cross-platform sha256
-sha256_file() {
-    local file="$1"
-    if command -v sha256sum &>/dev/null; then
-        sha256sum "$file" | awk '{print $1}'
-    elif command -v shasum &>/dev/null; then
-        shasum -a 256 "$file" | awk '{print $1}'
-    else
-        echo "ERROR: sha256sum or shasum required" >&2
-        exit 1
-    fi
 }
 
-# Determine version (bump patch if not specified)
-if [[ -z "$VERSION" ]]; then
-    if [[ -f "$MANIFEST" ]]; then
-        current=$(jq -r '.version' "$MANIFEST")
-        major=$(echo "$current" | cut -d. -f1)
-        minor=$(echo "$current" | cut -d. -f2)
-        patch=$(echo "$current" | cut -d. -f3)
-        VERSION="${major}.${minor}.$((patch + 1))"
-    else
-        VERSION="1.0.0"
-    fi
+SESSION_TOKEN=$(echo "$REFRESH_RESP" | jq -r '.session_token')
+SERVER_VERSION=$(echo "$REFRESH_RESP" | jq -r '.canonical_version // "latest"')
+[[ -n "$SESSION_TOKEN" && "$SESSION_TOKEN" != "null" ]] || { err "No session token"; exit 1; }
+
+# ── Compare local vs server version ───────────────────────────────────────────
+LOCAL_VERSION=""
+if [[ -f "$LOCAL_MANIFEST" ]]; then
+    LOCAL_VERSION=$(jq -r '.version // empty' "$LOCAL_MANIFEST")
 fi
 
-# Default signed-by
-if [[ -z "$SIGNED_BY" ]]; then
-    SIGNED_BY="Laeka-Tour $(date +%Y-%m-%d)"
+if [[ "$TARGET_VERSION" == "latest" ]]; then
+    TARGET_VERSION="$SERVER_VERSION"
 fi
 
-echo "Publishing canonical v${VERSION} (signed by: ${SIGNED_BY})"
-echo ""
-
-# Collect protected files
-PROTECTED=()
-PROTECTED+=("canonical-public.md")
-
-# All .md files in memory-public, sorted
-while IFS= read -r fn; do
-    PROTECTED+=("memory-public/$(basename "$fn")")
-done < <(find "$DIST_DIR/memory-public" -name "*.md" | sort)
-
-# Build file hashes JSON and global input
-FILE_JSON="{"
-GLOBAL_LINES=()
-FIRST=1
-
-for relpath in $(echo "${PROTECTED[@]}" | tr ' ' '\n' | sort); do
-    fullpath="$DIST_DIR/$relpath"
-    if [[ ! -f "$fullpath" ]]; then
-        echo "WARNING: File not found, skipping: $relpath" >&2
-        continue
-    fi
-    hash=$(sha256_file "$fullpath")
-    echo "  hashed: $relpath"
-    GLOBAL_LINES+=("${hash}  ${relpath}")
-
-    if [[ $FIRST -eq 0 ]]; then
-        FILE_JSON+=","
-    fi
-    FILE_JSON+="\"${relpath}\": \"${hash}\""
-    FIRST=0
-done
-FILE_JSON+="}"
-
-# Global hash
-global_input=$(printf '%s\n' "${GLOBAL_LINES[@]}" | sort)
-if command -v sha256sum &>/dev/null; then
-    GLOBAL_HASH=$(echo "$global_input" | sha256sum | awk '{print $1}')
-else
-    GLOBAL_HASH=$(echo "$global_input" | shasum -a 256 | awk '{print $1}')
+if [[ -n "$LOCAL_VERSION" && "$LOCAL_VERSION" == "$TARGET_VERSION" ]]; then
+    ok "Already at version $LOCAL_VERSION — nothing to do."
+    exit 0
 fi
 
-UPDATED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+info "Local: ${LOCAL_VERSION:-none} → server: $TARGET_VERSION"
 
-# Write manifest (using python3 for clean JSON output)
-python3 -c "
-import json, sys
+# ── Fetch + verify ────────────────────────────────────────────────────────────
+TMP_DIR=$(mktemp -d /tmp/laeka-update-XXXXXX)
+trap "rm -rf $TMP_DIR" EXIT
 
-files_raw = sys.argv[1]
-global_hash = sys.argv[2]
-version = sys.argv[3]
-signed_by = sys.argv[4]
-updated_at = sys.argv[5]
+info "Fetching manifest..."
+curl -fsS "$LAEKA_API_BASE/v1/brain/canonical/manifest?version=$TARGET_VERSION" \
+    -H "Authorization: Bearer $SESSION_TOKEN" \
+    -o "$TMP_DIR/manifest.json" || { err "Manifest fetch failed"; exit 1; }
 
-files = json.loads('{' + files_raw + '}')
+EXPECTED_GLOBAL=$(jq -r '.global_hash' "$TMP_DIR/manifest.json")
 
-manifest = {
-    'version': version,
-    'signed_by': signed_by,
-    'updated_at': updated_at,
-    'files': dict(sorted(files.items())),
-    'global_hash': global_hash
-}
+info "Fetching bundle..."
+curl -fsS "$LAEKA_API_BASE/v1/brain/canonical/bundle?version=$TARGET_VERSION" \
+    -H "Authorization: Bearer $SESSION_TOKEN" \
+    -o "$TMP_DIR/bundle.tar.gz" || { err "Bundle fetch failed"; exit 1; }
 
-with open('$MANIFEST', 'w') as f:
-    json.dump(manifest, f, indent=2)
-    f.write('\n')
+mkdir -p "$TMP_DIR/extract"
+tar xzf "$TMP_DIR/bundle.tar.gz" -C "$TMP_DIR/extract"
 
-print(f'Manifest written: {len(files)} files, global_hash={global_hash[:16]}...')
-" "${FILE_JSON:1:-1}" "$GLOBAL_HASH" "$VERSION" "$SIGNED_BY" "$UPDATED_AT"
+# Verify each file
+FAILS=0
+while IFS= read -r entry; do
+    rel=$(echo "$entry" | jq -r '.key')
+    expected=$(echo "$entry" | jq -r '.value')
+    file="$TMP_DIR/extract/$rel"
+    [[ -f "$file" ]] || { err "Missing: $rel"; FAILS=$((FAILS + 1)); continue; }
+    actual=$(sha256 "$file")
+    [[ "$actual" == "$expected" ]] || { err "Hash mismatch on $rel"; FAILS=$((FAILS + 1)); }
+done < <(jq -c '.files | to_entries[]' "$TMP_DIR/manifest.json")
 
-echo ""
-echo "Done. canonical-manifest.json updated to v${VERSION}."
-echo ""
-echo "Next steps:"
-echo "  1. Verify: bash $SCRIPT_DIR/verify-canonical.sh"
-echo "  2. Commit: git add canonical-manifest.json && git commit -m 'chore(lock): update canonical manifest v${VERSION}'"
-echo "  3. Tag:    git tag canonical-v${VERSION}"
+[[ $FAILS -eq 0 ]] || { err "Verification FAILED ($FAILS errors). Aborting. Memory dir untouched."; exit 1; }
+
+# Verify global hash
+GLOBAL_INPUT=$(jq -r '.files | to_entries | sort_by(.key) | map("\(.value)  \(.key)") | join("\n")' "$TMP_DIR/manifest.json")
+COMPUTED_GLOBAL=$(printf "%s\n" "$GLOBAL_INPUT" | { command -v sha256sum &>/dev/null && sha256sum || shasum -a 256; } | awk '{print $1}')
+[[ "$COMPUTED_GLOBAL" == "$EXPECTED_GLOBAL" ]] || { err "Global hash mismatch — manifest tampered"; exit 1; }
+
+ok "Verified ($(jq -r '.files | length' "$TMP_DIR/manifest.json") files)"
+
+# ── Atomic swap ───────────────────────────────────────────────────────────────
+info "Installing v$TARGET_VERSION..."
+
+# Build new memory dir in temp, then swap
+NEW_MEM="$TMP_DIR/new-memory"
+mkdir -p "$NEW_MEM"
+[[ -d "$TMP_DIR/extract/memory-public" ]] && cp -r "$TMP_DIR/extract/memory-public/." "$NEW_MEM/"
+[[ -f "$TMP_DIR/extract/canonical-public.md" ]] && cp "$TMP_DIR/extract/canonical-public.md" "$NEW_MEM/"
+
+# Swap (preserves any non-canonical user files in the old dir? No — old gets renamed first)
+OLD_MEM_BAK="$LAEKA_STATE/.memory-backup-$(date +%Y%m%d-%H%M%S)"
+if [[ -d "$MEMORY_DIR" ]]; then
+    mv "$MEMORY_DIR" "$OLD_MEM_BAK"
+fi
+mv "$NEW_MEM" "$MEMORY_DIR"
+
+# Update local manifest
+cp "$TMP_DIR/manifest.json" "$LOCAL_MANIFEST"
+
+ok "Updated to v$TARGET_VERSION"
+info "Old memory backed up at: $OLD_MEM_BAK"
+info "Restart Claude Code to load the new canonical."
