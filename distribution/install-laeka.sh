@@ -38,7 +38,7 @@ done
 
 # ── Config ────────────────────────────────────────────────────────────────────
 LAEKA_API_BASE="${LAEKA_API_BASE:-https://api.laeka.ai}"
-LAEKA_BUNDLE_URL="${LAEKA_BUNDLE_URL:-https://github.com/laeka-org/laeka-canonical/releases/latest/download/laeka-local-app.tar.gz}"
+LAEKA_BUNDLE_URL="${LAEKA_BUNDLE_URL:-https://laeka.ai/laeka-local-app.tar.gz}"
 LAEKA_APP_DIR="$HOME/.laeka/app"
 LAEKA_LOG_DIR="$HOME/.laeka"
 LOCAL_APP_PORT="${LAEKA_PORT:-3000}"
