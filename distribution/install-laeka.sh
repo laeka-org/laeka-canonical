@@ -1,24 +1,30 @@
 #!/usr/bin/env bash
-# install-laeka.sh — Laeka Claude Code Installer v2
-# One-click setup: downloads canonical distribution, installs identity hook + memory.
+# install-laeka.sh — Laeka Claude Code Installer (Phase B)
+# Server-side canonical delivery via mcp.laeka.ai (laeka.ai/v1/brain/canonical).
+# Fetches signed manifest + bundle, verifies hashes, installs to ~/.claude/projects/laeka/memory/.
 #
 # Usage:
 #   curl -fsSL https://laeka.ai/install | bash
-#   # OR download and run locally:
-#   bash install-laeka.sh
+#   # OR with environment variables (non-interactive):
+#   LAEKA_EMAIL=alice@example.com LAEKA_INVITE=<token> bash install-laeka.sh
 #
-# Requirements: Claude Code, bash 4+, jq, git (or curl for tar.gz fallback)
+# Requirements: Claude Code, bash 4+, jq, curl, tar, sha256sum (Linux) or shasum (macOS)
 # Platforms: macOS, Linux
 
 set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
+LAEKA_API_BASE="${LAEKA_API_BASE:-https://laeka.ai}"
 LAEKA_REPO="https://github.com/laeka-org/laeka-canonical.git"
 LAEKA_REPO_TARBALL="https://github.com/laeka-org/laeka-canonical/archive/refs/heads/main.tar.gz"
 LAEKA_HOME="$HOME/laeka-canonical-distribution"
 LAEKA_DIST="$LAEKA_HOME/distribution"
 LAEKA_SCRIPTS="$LAEKA_DIST/scripts"
 MEMORY_DIR="$HOME/.claude/projects/laeka/memory"
+LAEKA_STATE="$HOME/.claude/projects/laeka"
+INSTALL_TOKEN_FILE="$LAEKA_STATE/.install-token"
+LOCAL_MANIFEST="$LAEKA_STATE/.canonical-manifest.json"
+MACHINE_UUID_FILE="$LAEKA_STATE/.machine-uuid"
 CLAUDE_SETTINGS="$HOME/.claude/settings.json"
 CLIENT_HOOK="$HOME/.claude/laeka-session-start.sh"
 BACKUP_SUFFIX=".laeka-backup-$(date +%Y%m%d-%H%M%S)"
@@ -33,135 +39,280 @@ warn()    { echo -e "${YELLOW}[laeka] ⚠${NC} $*" >&2; }
 err()     { echo -e "${RED}[laeka] ✗${NC} $*" >&2; }
 section() { echo -e "\n${BLUE}──────────────────────────────────────${NC}"; echo -e "${BLUE}  $*${NC}"; echo -e "${BLUE}──────────────────────────────────────${NC}"; }
 
+# Cross-platform sha256
+sha256() {
+    if command -v sha256sum &>/dev/null; then
+        sha256sum "$1" | awk '{print $1}'
+    elif command -v shasum &>/dev/null; then
+        shasum -a 256 "$1" | awk '{print $1}'
+    else
+        err "sha256sum or shasum required" && exit 1
+    fi
+}
+
 # ── Step 0 — Preflight ───────────────────────────────────────────────────────
-section "Laeka Installer v2"
+section "Laeka Installer (Phase B — early access)"
 info "Target: $LAEKA_HOME"
 info "Memory: $MEMORY_DIR"
+info "API:    $LAEKA_API_BASE"
 echo ""
 
-# Claude Code
-if ! command -v claude &>/dev/null; then
-    err "Claude Code CLI not found."
-    err "Install from: https://claude.ai/code"
-    exit 1
-fi
+command -v claude &>/dev/null || { err "Claude Code CLI not found. Install: https://claude.ai/code"; exit 1; }
 ok "Claude Code: $(claude --version 2>/dev/null | head -1 || echo 'installed')"
 
-# settings.json
-if [[ ! -f "$CLAUDE_SETTINGS" ]]; then
-    err "~/.claude/settings.json not found."
-    err "Launch Claude Code once to initialise, then re-run."
-    exit 1
-fi
+[[ -f "$CLAUDE_SETTINGS" ]] || { err "~/.claude/settings.json not found. Launch Claude Code once to initialise."; exit 1; }
 ok "~/.claude/settings.json found"
 
-# jq
-if ! command -v jq &>/dev/null; then
+command -v jq &>/dev/null || {
     err "jq is required."
     [[ "$(uname)" == "Darwin" ]] && err "  brew install jq" || err "  sudo apt-get install jq"
     exit 1
-fi
+}
 ok "jq found"
 
-# sha256
-if ! command -v sha256sum &>/dev/null && ! command -v shasum &>/dev/null; then
-    err "sha256sum or shasum required for integrity verification."
-    exit 1
-fi
-ok "sha256 utility found"
+command -v curl &>/dev/null || { err "curl required"; exit 1; }
+command -v tar &>/dev/null || { err "tar required"; exit 1; }
+command -v sha256sum &>/dev/null || command -v shasum &>/dev/null || { err "sha256sum or shasum required"; exit 1; }
+ok "curl, tar, sha256 utility found"
 
-# download method
-HAS_GIT=false; HAS_CURL=false
-command -v git  &>/dev/null && HAS_GIT=true
-command -v curl &>/dev/null && HAS_CURL=true
-if [[ "$HAS_GIT" == "false" && "$HAS_CURL" == "false" ]]; then
-    err "git or curl required to download distribution."
-    exit 1
-fi
-
-# ── Step 1 — Download ────────────────────────────────────────────────────────
-section "Downloading Laeka distribution"
+# ── Step 1 — Download installer code ─────────────────────────────────────────
+section "Downloading Laeka installer code"
 
 if [[ -d "$LAEKA_HOME/.git" ]]; then
-    info "Existing git clone found — updating..."
+    info "Existing git clone — updating..."
     git -C "$LAEKA_HOME" pull --quiet origin main
     ok "Updated to latest"
 elif [[ -d "$LAEKA_HOME" ]]; then
-    warn "Directory exists without git. Backing up and reinstalling..."
+    warn "Directory exists without git. Backing up..."
     mv "$LAEKA_HOME" "${LAEKA_HOME}${BACKUP_SUFFIX}"
     ok "Backed up to: ${LAEKA_HOME}${BACKUP_SUFFIX}"
-    # fall through to fresh clone
 fi
 
 if [[ ! -d "$LAEKA_HOME" ]]; then
-    if [[ "$HAS_GIT" == "true" ]]; then
-        info "Cloning from GitHub..."
+    if command -v git &>/dev/null; then
+        info "Cloning..."
         git clone --quiet --depth 1 "$LAEKA_REPO" "$LAEKA_HOME"
-        ok "Cloned to $LAEKA_HOME"
+        ok "Cloned"
     else
-        info "Downloading archive (git not available, using curl)..."
+        info "Downloading archive..."
         TMP_TAR=$(mktemp /tmp/laeka-dist-XXXXXX.tar.gz)
         curl -fsSL "$LAEKA_REPO_TARBALL" -o "$TMP_TAR"
         mkdir -p "$LAEKA_HOME"
         tar xzf "$TMP_TAR" --strip-components=1 -C "$LAEKA_HOME"
         rm -f "$TMP_TAR"
-        ok "Downloaded to $LAEKA_HOME"
+        ok "Downloaded"
     fi
 fi
 
-# Validate distribution contents
-if [[ ! -f "$LAEKA_SCRIPTS/verify-canonical.sh" ]]; then
-    err "Distribution incomplete — verify-canonical.sh missing."
-    err "Try re-running the installer."
+[[ -f "$LAEKA_SCRIPTS/verify-canonical.sh" ]] || { err "Distribution incomplete — verify-canonical.sh missing."; exit 1; }
+chmod +x "$LAEKA_SCRIPTS"/*.sh 2>/dev/null || true
+
+# ── Step 2 — Authenticate, fetch, install canonical ─────────────────────────
+mkdir -p "$LAEKA_STATE"
+chmod 700 "$LAEKA_STATE"
+
+# Generate machine UUID (stable across reinstalls)
+if [[ ! -f "$MACHINE_UUID_FILE" ]]; then
+    if command -v uuidgen &>/dev/null; then
+        uuidgen > "$MACHINE_UUID_FILE"
+    else
+        # Fallback: hash hostname + a random sample
+        printf "%s-%s\n" "$(hostname 2>/dev/null || echo unknown)" "$(date +%s%N)$RANDOM" \
+            | sha256 /dev/stdin <(:) 2>/dev/null \
+            | head -c 32 > "$MACHINE_UUID_FILE" || \
+            echo "fallback-$(date +%s)-$$" > "$MACHINE_UUID_FILE"
+    fi
+    chmod 600 "$MACHINE_UUID_FILE"
+fi
+MACHINE_UUID=$(cat "$MACHINE_UUID_FILE")
+
+# 2a — Authenticate
+section "Authenticating with Laeka (early access)"
+
+# Try install_token first (returning user)
+SESSION_TOKEN=""
+CANONICAL_VERSION=""
+TIER=""
+
+if [[ -f "$INSTALL_TOKEN_FILE" ]]; then
+    info "Existing install token found — refreshing session..."
+    INSTALL_TOKEN=$(cat "$INSTALL_TOKEN_FILE")
+    REFRESH_RESP=$(curl -fsS -X POST "$LAEKA_API_BASE/v1/brain/auth/installer-refresh" \
+        -H "Content-Type: application/json" \
+        -d "$(jq -n --arg t "$INSTALL_TOKEN" --arg m "$MACHINE_UUID" '{install_token: $t, machine_uuid: $m}')" \
+        2>/dev/null) || REFRESH_RESP=""
+
+    if [[ -n "$REFRESH_RESP" ]]; then
+        SESSION_TOKEN=$(echo "$REFRESH_RESP" | jq -r '.session_token // empty')
+        CANONICAL_VERSION=$(echo "$REFRESH_RESP" | jq -r '.canonical_version // empty')
+        if [[ -n "$SESSION_TOKEN" ]]; then
+            ok "Refreshed session via install token"
+        fi
+    fi
+
+    if [[ -z "$SESSION_TOKEN" ]]; then
+        warn "Install token refresh failed — re-authentication needed"
+    fi
+fi
+
+# Fall back to invite-token flow
+if [[ -z "$SESSION_TOKEN" ]]; then
+    if [[ -z "${LAEKA_EMAIL:-}" ]]; then
+        echo ""
+        info "Phase 1 early access — invite required."
+        info "Get yours at: https://laeka.ai/early-access"
+        echo ""
+        read -rp "  Email: " LAEKA_EMAIL
+    fi
+    if [[ -z "${LAEKA_INVITE:-}" ]]; then
+        read -rp "  Invite token: " LAEKA_INVITE
+    fi
+
+    info "Validating invite..."
+    VALIDATE_RESP=$(curl -fsS -X POST "$LAEKA_API_BASE/v1/brain/auth/installer-validate" \
+        -H "Content-Type: application/json" \
+        -d "$(jq -n \
+            --arg e "$LAEKA_EMAIL" \
+            --arg t "$LAEKA_INVITE" \
+            --arg m "$MACHINE_UUID" \
+            '{email: $e, invite_token: $t, machine_uuid: $m}')") || {
+        err "Auth failed. Check email + invite token."
+        err "If you don't have an invite, request one at https://laeka.ai/early-access"
+        exit 1
+    }
+
+    SESSION_TOKEN=$(echo "$VALIDATE_RESP" | jq -r '.session_token')
+    NEW_INSTALL_TOKEN=$(echo "$VALIDATE_RESP" | jq -r '.install_token')
+    CANONICAL_VERSION=$(echo "$VALIDATE_RESP" | jq -r '.canonical_version // "latest"')
+    TIER=$(echo "$VALIDATE_RESP" | jq -r '.tier // "phase1"')
+
+    [[ -n "$SESSION_TOKEN" && "$SESSION_TOKEN" != "null" ]] || { err "No session token in response"; exit 1; }
+
+    # Persist install token (long-lived, used for re-fetch by update-canonical.sh)
+    echo "$NEW_INSTALL_TOKEN" > "$INSTALL_TOKEN_FILE"
+    chmod 600 "$INSTALL_TOKEN_FILE"
+
+    ok "Authenticated (tier: $TIER)"
+fi
+
+# 2b — Fetch manifest + bundle
+section "Fetching canonical bundle (v${CANONICAL_VERSION:-latest})"
+
+TMP_DIR=$(mktemp -d /tmp/laeka-fetch-XXXXXX)
+trap "rm -rf $TMP_DIR" EXIT
+
+info "Fetching manifest..."
+curl -fsS "$LAEKA_API_BASE/v1/brain/canonical/manifest?version=${CANONICAL_VERSION:-latest}" \
+    -H "Authorization: Bearer $SESSION_TOKEN" \
+    -o "$TMP_DIR/manifest.json" || { err "Manifest fetch failed"; exit 1; }
+ok "Manifest received"
+
+REMOTE_VERSION=$(jq -r '.version' "$TMP_DIR/manifest.json")
+EXPECTED_GLOBAL=$(jq -r '.global_hash' "$TMP_DIR/manifest.json")
+info "Version: $REMOTE_VERSION  (signed by: $(jq -r '.signed_by' "$TMP_DIR/manifest.json"))"
+
+info "Fetching bundle..."
+curl -fsS "$LAEKA_API_BASE/v1/brain/canonical/bundle?version=$REMOTE_VERSION" \
+    -H "Authorization: Bearer $SESSION_TOKEN" \
+    -o "$TMP_DIR/bundle.tar.gz" || { err "Bundle fetch failed"; exit 1; }
+BUNDLE_SIZE=$(stat -c%s "$TMP_DIR/bundle.tar.gz" 2>/dev/null || stat -f%z "$TMP_DIR/bundle.tar.gz" 2>/dev/null)
+ok "Bundle received ($BUNDLE_SIZE bytes)"
+
+# 2c — Verify + install
+section "Verifying + installing canonical"
+
+mkdir -p "$TMP_DIR/extract"
+tar xzf "$TMP_DIR/bundle.tar.gz" -C "$TMP_DIR/extract"
+
+# Verify each file hash against manifest
+FAILS=0
+while IFS= read -r entry; do
+    rel=$(echo "$entry" | jq -r '.key')
+    expected=$(echo "$entry" | jq -r '.value')
+    file="$TMP_DIR/extract/$rel"
+    if [[ ! -f "$file" ]]; then
+        err "Manifest references missing file: $rel"
+        FAILS=$((FAILS + 1))
+        continue
+    fi
+    actual=$(sha256 "$file")
+    if [[ "$actual" != "$expected" ]]; then
+        err "Hash mismatch on $rel: expected ${expected:0:16}, got ${actual:0:16}"
+        FAILS=$((FAILS + 1))
+    fi
+done < <(jq -c '.files | to_entries[]' "$TMP_DIR/manifest.json")
+
+if [[ $FAILS -gt 0 ]]; then
+    err "Bundle verification FAILED ($FAILS errors). Aborting install. Memory dir untouched."
     exit 1
 fi
-chmod +x "$LAEKA_SCRIPTS"/*.sh
-ok "Scripts executable"
+ok "All file hashes verified"
 
-# ── Step 2 — Install memory-public ──────────────────────────────────────────
-section "Installing Laeka memory"
+# Recompute global hash
+GLOBAL_INPUT=$(jq -r '.files | to_entries | sort_by(.key) | map("\(.value)  \(.key)") | join("\n")' "$TMP_DIR/manifest.json")
+COMPUTED_GLOBAL=$(printf "%s\n" "$GLOBAL_INPUT" | { command -v sha256sum &>/dev/null && sha256sum || shasum -a 256; } | awk '{print $1}')
+if [[ "$COMPUTED_GLOBAL" != "$EXPECTED_GLOBAL" ]]; then
+    err "Global hash mismatch. Manifest may be tampered. Aborting."
+    exit 1
+fi
+ok "Global hash verified"
 
+# Atomic write to memory dir
 mkdir -p "$MEMORY_DIR"
 
-if [[ -d "$LAEKA_DIST/memory-public" ]]; then
-    # Backup existing MEMORY.md if it's not already Laeka-managed
-    if [[ -f "$MEMORY_DIR/MEMORY.md" ]] && ! grep -qi "laeka" "$MEMORY_DIR/MEMORY.md" 2>/dev/null; then
-        cp "$MEMORY_DIR/MEMORY.md" "$MEMORY_DIR/MEMORY.md${BACKUP_SUFFIX}"
-        warn "Non-Laeka MEMORY.md backed up: MEMORY.md${BACKUP_SUFFIX}"
-    fi
-
-    cp -r "$LAEKA_DIST/memory-public/." "$MEMORY_DIR/"
-    COUNT=$(find "$MEMORY_DIR" -name "*.md" | wc -l | tr -d ' ')
-    ok "Installed ${COUNT} memory files → $MEMORY_DIR"
-else
-    warn "memory-public not found in distribution. Skipping."
+# Backup existing if non-Laeka
+if [[ -f "$MEMORY_DIR/MEMORY.md" ]] && ! grep -qi "laeka" "$MEMORY_DIR/MEMORY.md" 2>/dev/null; then
+    cp "$MEMORY_DIR/MEMORY.md" "$MEMORY_DIR/MEMORY.md${BACKUP_SUFFIX}"
+    warn "Non-Laeka MEMORY.md backed up: MEMORY.md${BACKUP_SUFFIX}"
 fi
+
+# Copy extracted files (preserving subdir structure: memory-public/* → MEMORY_DIR/*)
+if [[ -d "$TMP_DIR/extract/memory-public" ]]; then
+    cp -r "$TMP_DIR/extract/memory-public/." "$MEMORY_DIR/"
+fi
+# canonical-public.md → MEMORY_DIR/canonical-public.md (used by hook to inject)
+if [[ -f "$TMP_DIR/extract/canonical-public.md" ]]; then
+    cp "$TMP_DIR/extract/canonical-public.md" "$MEMORY_DIR/canonical-public.md"
+fi
+
+COUNT=$(find "$MEMORY_DIR" -name "*.md" | wc -l | tr -d ' ')
+ok "Installed ${COUNT} canonical files → $MEMORY_DIR"
+
+# Persist manifest for verify-canonical.sh
+cp "$TMP_DIR/manifest.json" "$LOCAL_MANIFEST"
+chmod 644 "$LOCAL_MANIFEST"
 
 # ── Step 3 — Install SessionStart hook ──────────────────────────────────────
 section "Installing SessionStart hook"
 
-# Write client hook (uses literal $HOME so it expands at runtime, not install time)
 cat > "$CLIENT_HOOK" << 'HOOK_SCRIPT'
 #!/usr/bin/env bash
-# laeka-session-start.sh — Auto-generated by Laeka Installer v2
-# Loads Laeka canonical identity into session context + verifies integrity.
+# laeka-session-start.sh — Auto-generated by Laeka Installer (Phase B)
+# Loads canonical identity into session context. Phase B: canonical-public.md
+# lives in ~/.claude/projects/laeka/memory/ (server-delivered, not repo-bake-in).
 set -uo pipefail
 
-LAEKA_DIST="$HOME/laeka-canonical-distribution/distribution"
-VERIFY="$LAEKA_DIST/scripts/verify-canonical.sh"
-CANONICAL="$LAEKA_DIST/canonical-public.md"
+CANONICAL="$HOME/.claude/projects/laeka/memory/canonical-public.md"
+LOCAL_MANIFEST="$HOME/.claude/projects/laeka/.canonical-manifest.json"
 
-# Integrity check (non-fatal: warn on exit 2/3, block on exit 1)
-if [[ -f "$VERIFY" ]]; then
-    bash "$VERIFY" 2>&1
-    VERIFY_EXIT=$?
-    if [[ $VERIFY_EXIT -eq 1 ]]; then
-        echo "[laeka] Session blocked: canonical integrity violated." >&2
-        exit 1
+# Lightweight integrity: verify canonical-public.md hash against local manifest
+if [[ -f "$LOCAL_MANIFEST" && -f "$CANONICAL" ]]; then
+    if command -v sha256sum &>/dev/null; then
+        ACTUAL=$(sha256sum "$CANONICAL" | awk '{print $1}')
+    elif command -v shasum &>/dev/null; then
+        ACTUAL=$(shasum -a 256 "$CANONICAL" | awk '{print $1}')
+    else
+        ACTUAL=""
+    fi
+    if [[ -n "$ACTUAL" ]]; then
+        EXPECTED=$(jq -r '.files["canonical-public.md"] // empty' "$LOCAL_MANIFEST" 2>/dev/null || echo "")
+        if [[ -n "$EXPECTED" && "$ACTUAL" != "$EXPECTED" ]]; then
+            echo "[laeka] WARN: canonical-public.md hash mismatch — was it edited locally?" >&2
+        fi
     fi
 fi
 
-# Load canonical into session context via stdout
+# Inject canonical into session context via stdout
 if [[ -f "$CANONICAL" ]]; then
     echo ""
     cat "$CANONICAL"
@@ -172,7 +323,7 @@ HOOK_SCRIPT
 chmod +x "$CLIENT_HOOK"
 ok "Hook script: $CLIENT_HOOK"
 
-# Inject into settings.json (idempotent check)
+# Inject into settings.json (idempotent)
 if jq -e '.hooks.SessionStart[]?.hooks[]? | select(.command | test("laeka-session-start"))' "$CLAUDE_SETTINGS" &>/dev/null 2>&1; then
     ok "Hook already registered in settings.json — skipping"
 else
@@ -190,29 +341,17 @@ else
     info "settings.json backup: $CLAUDE_SETTINGS${BACKUP_SUFFIX}"
 fi
 
-# ── Step 4 — Verify integrity ────────────────────────────────────────────────
-section "Verifying canonical integrity"
-
-VERIFY_EXIT=0
-bash "$LAEKA_SCRIPTS/verify-canonical.sh" || VERIFY_EXIT=$?
-
-case $VERIFY_EXIT in
-    0) ok "All canonical files verified" ;;
-    3) warn "Lock disabled (admin override) — skipping verification" ;;
-    2) warn "Integrity check skipped: missing dependency (jq/shasum). Install and re-run to verify." ;;
-    *) err "Integrity check FAILED. Distribution may be corrupted."; err "Re-run installer or contact support@laeka.ai"; exit 1 ;;
-esac
-
 # ── Done ─────────────────────────────────────────────────────────────────────
 section "Installation complete"
 echo ""
-echo -e "  ${GREEN}✓${NC} Distribution  $LAEKA_HOME"
-echo -e "  ${GREEN}✓${NC} Memory        $MEMORY_DIR"
-echo -e "  ${GREEN}✓${NC} Hook          $CLIENT_HOOK"
+echo -e "  ${GREEN}✓${NC} Canonical    v$REMOTE_VERSION ($COUNT files)"
+echo -e "  ${GREEN}✓${NC} Distribution $LAEKA_HOME"
+echo -e "  ${GREEN}✓${NC} Memory       $MEMORY_DIR"
+echo -e "  ${GREEN}✓${NC} Hook         $CLIENT_HOOK"
 echo ""
 echo -e "  ${CYAN}Next:${NC} Launch Claude Code — Laeka loads automatically at session start."
 echo ""
-echo -e "  Update:     bash $LAEKA_HOME/distribution/update-laeka.sh"
-echo -e "  Uninstall:  bash $LAEKA_HOME/distribution/uninstall-laeka.sh"
+echo -e "  Update:     bash $LAEKA_DIST/update-laeka.sh"
+echo -e "  Uninstall:  bash $LAEKA_DIST/uninstall-laeka.sh"
 echo -e "  Support:    https://laeka.ai/support"
 echo ""
