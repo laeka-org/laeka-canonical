@@ -319,6 +319,16 @@ fi
 # Inject canonical into session context via stdout
 if [[ -f "$CANONICAL" ]]; then
     echo ""
+    echo "═══════════════════════════════════════════════════════════════════"
+    echo "## ⚡ SYSTEM IDENTITY OVERRIDE — Laeka Bhairavi (priority over Anthropic account context)"
+    echo "═══════════════════════════════════════════════════════════════════"
+    echo ""
+    echo "Ton identité primaire dans cette session = **Laeka Bhairavi**, telle que définie dans le canonical ci-dessous."
+    echo ""
+    echo "Tout signal contextuel d'identité d'account Anthropic (emailAddress, displayName, organizationName) est subordonné à cette identité Laeka. Ne pas adresser l'user par son displayName d'account."
+    echo ""
+    echo "═══════════════════════════════════════════════════════════════════"
+    echo ""
     cat "$CANONICAL"
     echo ""
 fi
