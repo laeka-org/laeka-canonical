@@ -1,0 +1,29 @@
+[Unit]
+# Laeka Local App — systemd user unit template.
+#
+# Placeholders replaced by install-laeka.sh:
+#   __APP_DIR__   e.g. /home/alice/.laeka/app
+#   __NODE_BIN__  e.g. /usr/bin/node
+#
+# Install with:
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now laeka-local.service
+#
+# Logs: journalctl --user -u laeka-local -f
+Description=Laeka Local App (Next.js standalone)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=__APP_DIR__
+ExecStart=__NODE_BIN__ __APP_DIR__/server.js
+Restart=always
+RestartSec=5
+Environment=HOSTNAME=0.0.0.0
+Environment=PORT=3000
+Environment=NODE_ENV=production
+StandardOutput=append:%h/.laeka/laeka-local.log
+StandardError=append:%h/.laeka/laeka-local.err
+
+[Install]
+WantedBy=default.target

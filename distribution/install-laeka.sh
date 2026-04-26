@@ -1,20 +1,47 @@
 #!/usr/bin/env bash
-# install-laeka.sh — Laeka Claude Code Installer (Phase B)
+# install-laeka.sh — Laeka Claude Code Installer (Phase B + F3 local-app)
 # Server-side canonical delivery via api.laeka.ai/v1/brain/canonical.
 # Fetches signed manifest + bundle, verifies hashes, installs to ~/.claude/projects/laeka/memory/.
 #
+# Optional: install the standalone local web app (chat UI on localhost + LAN).
+#
 # Usage:
+#   # CLI hook only (canonical + Bhairavi voice in Claude Code):
 #   curl -fsSL https://laeka.ai/install | bash
-#   # OR with environment variables (non-interactive):
-#   LAEKA_EMAIL=alice@example.com LAEKA_INVITE=<token> bash install-laeka.sh
+#
+#   # CLI hook + local web app (chat UI on http://<lan-ip>:3000/local):
+#   curl -fsSL https://laeka.ai/install | bash -s -- --with-local-app
+#
+#   # Non-interactive with env vars:
+#   LAEKA_EMAIL=alice@example.com LAEKA_INVITE=<tok> \
+#   LAEKA_INSTALL_LOCAL_APP=1 bash install-laeka.sh
 #
 # Requirements: Claude Code, bash 4+, jq, curl, tar, sha256sum (Linux) or shasum (macOS)
-# Platforms: macOS, Linux
+# Local-app extras: Node.js 20+ (auto-install attempted via brew/apt if missing)
+# Platforms: macOS, Linux  (Windows: see install-laeka.ps1)
 
 set -euo pipefail
 
+# ── Args ──────────────────────────────────────────────────────────────────────
+INSTALL_LOCAL_APP="${LAEKA_INSTALL_LOCAL_APP:-0}"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --with-local-app) INSTALL_LOCAL_APP=1; shift ;;
+        --no-local-app)   INSTALL_LOCAL_APP=0; shift ;;
+        --help|-h)
+            sed -n '2,21p' "$0" | sed 's/^# \?//'
+            exit 0
+            ;;
+        *) shift ;;  # ignore unknown args (forward compatibility)
+    esac
+done
+
 # ── Config ────────────────────────────────────────────────────────────────────
 LAEKA_API_BASE="${LAEKA_API_BASE:-https://api.laeka.ai}"
+LAEKA_BUNDLE_URL="${LAEKA_BUNDLE_URL:-https://github.com/laeka-org/laeka-canonical/releases/latest/download/laeka-local-app.tar.gz}"
+LAEKA_APP_DIR="$HOME/.laeka/app"
+LAEKA_LOG_DIR="$HOME/.laeka"
+LOCAL_APP_PORT="${LAEKA_PORT:-3000}"
 LAEKA_REPO="https://github.com/laeka-org/laeka-canonical.git"
 LAEKA_REPO_TARBALL="https://github.com/laeka-org/laeka-canonical/archive/refs/heads/main.tar.gz"
 LAEKA_HOME="$HOME/laeka-canonical-distribution"
@@ -425,6 +452,186 @@ fi
 
 info "Lance 'laeka' pour Bhairavi voice. 'claude' reste vanilla."
 
+# ── Step 6 — Optional: install local web app ────────────────────────────────
+LOCAL_APP_URL=""
+LOCAL_APP_LAN_URL=""
+if [[ "$INSTALL_LOCAL_APP" == "1" ]]; then
+    section "Installing Laeka Local Web App"
+
+    OS="$(uname -s)"
+
+    # 6a — Verify Node.js 20+ (auto-install attempt if missing)
+    NODE_BIN=""
+    if command -v node &>/dev/null; then
+        NODE_VERSION=$(node --version 2>/dev/null | sed 's/^v//' | cut -d. -f1)
+        if [[ "$NODE_VERSION" =~ ^[0-9]+$ ]] && [[ $NODE_VERSION -ge 20 ]]; then
+            NODE_BIN="$(command -v node)"
+            ok "Node.js $(node --version) found at $NODE_BIN"
+        else
+            warn "Node.js v$NODE_VERSION found — need 20+. Attempting upgrade..."
+        fi
+    fi
+
+    if [[ -z "$NODE_BIN" ]]; then
+        info "Installing Node.js 20+..."
+        if [[ "$OS" == "Darwin" ]]; then
+            if command -v brew &>/dev/null; then
+                brew install node@20 2>&1 | tail -5 || warn "brew install node@20 returned non-zero"
+                # Homebrew on Apple Silicon → /opt/homebrew/bin, Intel → /usr/local/bin
+                for candidate in /opt/homebrew/opt/node@20/bin/node /opt/homebrew/bin/node /usr/local/bin/node; do
+                    [[ -x "$candidate" ]] && NODE_BIN="$candidate" && break
+                done
+            else
+                err "Homebrew not found. Install Node 20+ manually: https://nodejs.org/"
+                exit 1
+            fi
+        elif [[ "$OS" == "Linux" ]]; then
+            if command -v apt-get &>/dev/null; then
+                # NodeSource setup script for Node 20.x
+                curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - 2>&1 | tail -5
+                sudo apt-get install -y nodejs 2>&1 | tail -3
+                NODE_BIN="$(command -v node)"
+            elif command -v dnf &>/dev/null; then
+                sudo dnf install -y nodejs 2>&1 | tail -3
+                NODE_BIN="$(command -v node)"
+            else
+                err "Unknown package manager. Install Node 20+ manually: https://nodejs.org/"
+                exit 1
+            fi
+        else
+            err "Unsupported OS: $OS. Install Node 20+ manually."
+            exit 1
+        fi
+    fi
+
+    [[ -n "$NODE_BIN" && -x "$NODE_BIN" ]] || { err "Node.js install failed"; exit 1; }
+    ok "Node.js: $NODE_BIN ($($NODE_BIN --version))"
+
+    # 6b — Download standalone bundle
+    section "Downloading Laeka Local App bundle"
+    info "URL: $LAEKA_BUNDLE_URL"
+
+    APP_TMP=$(mktemp -d /tmp/laeka-app-XXXXXX)
+    trap "rm -rf $APP_TMP" EXIT
+
+    if ! curl -fsSL "$LAEKA_BUNDLE_URL" -o "$APP_TMP/bundle.tar.gz"; then
+        err "Bundle download failed."
+        err "Set LAEKA_BUNDLE_URL to override the source URL, or check network connectivity."
+        exit 1
+    fi
+    BUNDLE_BYTES=$(stat -c%s "$APP_TMP/bundle.tar.gz" 2>/dev/null || stat -f%z "$APP_TMP/bundle.tar.gz" 2>/dev/null)
+    ok "Downloaded ($BUNDLE_BYTES bytes)"
+
+    # 6c — Extract to $LAEKA_APP_DIR (atomic — backup existing if present)
+    if [[ -d "$LAEKA_APP_DIR" ]]; then
+        mv "$LAEKA_APP_DIR" "${LAEKA_APP_DIR}${BACKUP_SUFFIX}"
+        warn "Existing app dir backed up: ${LAEKA_APP_DIR}${BACKUP_SUFFIX}"
+    fi
+    mkdir -p "$LAEKA_APP_DIR"
+    tar xzf "$APP_TMP/bundle.tar.gz" -C "$LAEKA_APP_DIR" --strip-components=1 2>/dev/null \
+        || tar xzf "$APP_TMP/bundle.tar.gz" -C "$LAEKA_APP_DIR"
+    [[ -f "$LAEKA_APP_DIR/server.js" ]] || { err "Bundle missing server.js — invalid Next.js standalone output"; exit 1; }
+    ok "Extracted to $LAEKA_APP_DIR"
+
+    # 6d — Install service file (LaunchAgent on Mac, systemd user on Linux)
+    section "Setting up auto-start service"
+
+    SERVICE_TPL_DIR="$LAEKA_DIST/service-templates"
+
+    if [[ "$OS" == "Darwin" ]]; then
+        PLIST_DIR="$HOME/Library/LaunchAgents"
+        PLIST_PATH="$PLIST_DIR/com.laeka.local.plist"
+        mkdir -p "$PLIST_DIR"
+
+        # Render template
+        sed -e "s|__APP_DIR__|$LAEKA_APP_DIR|g" \
+            -e "s|__NODE_BIN__|$NODE_BIN|g" \
+            -e "s|__HOME__|$HOME|g" \
+            "$SERVICE_TPL_DIR/com.laeka.local.plist" > "$PLIST_PATH"
+
+        # Reload (idempotent)
+        launchctl unload "$PLIST_PATH" 2>/dev/null || true
+        launchctl load -w "$PLIST_PATH"
+        ok "LaunchAgent installed: $PLIST_PATH"
+    elif [[ "$OS" == "Linux" ]]; then
+        UNIT_DIR="$HOME/.config/systemd/user"
+        UNIT_PATH="$UNIT_DIR/laeka-local.service"
+        mkdir -p "$UNIT_DIR"
+
+        sed -e "s|__APP_DIR__|$LAEKA_APP_DIR|g" \
+            -e "s|__NODE_BIN__|$NODE_BIN|g" \
+            "$SERVICE_TPL_DIR/laeka-local.service" > "$UNIT_PATH"
+
+        systemctl --user daemon-reload
+        systemctl --user enable --now laeka-local.service
+        ok "systemd user unit installed: $UNIT_PATH"
+    fi
+
+    # 6e — Wait for ready (poll port)
+    info "Waiting for app to become ready on port $LOCAL_APP_PORT..."
+    READY=0
+    for i in {1..20}; do
+        if curl -sf -o /dev/null --max-time 1 "http://127.0.0.1:$LOCAL_APP_PORT/local" 2>/dev/null; then
+            READY=1
+            break
+        fi
+        sleep 1
+    done
+
+    if [[ $READY -eq 1 ]]; then
+        ok "App is responding on http://127.0.0.1:$LOCAL_APP_PORT/local"
+    else
+        warn "App not yet responding after 20s — check logs: $LAEKA_LOG_DIR/laeka-local.log"
+    fi
+
+    # 6f — Detect LAN IP + print URL + QR code
+    section "Local app ready"
+
+    LAN_IP=""
+    if [[ "$OS" == "Darwin" ]]; then
+        LAN_IP=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo "")
+    elif [[ "$OS" == "Linux" ]]; then
+        LAN_IP=$(ip -4 -o addr show scope global 2>/dev/null \
+                  | awk '{print $4}' | cut -d/ -f1 | head -1)
+    fi
+
+    LOCAL_APP_URL="http://localhost:$LOCAL_APP_PORT/local"
+    if [[ -n "$LAN_IP" ]]; then
+        LOCAL_APP_LAN_URL="http://$LAN_IP:$LOCAL_APP_PORT/local"
+    fi
+
+    echo ""
+    echo -e "  ${CYAN}Local:${NC}  $LOCAL_APP_URL"
+    if [[ -n "$LOCAL_APP_LAN_URL" ]]; then
+        echo -e "  ${CYAN}LAN:${NC}    $LOCAL_APP_LAN_URL  (use from your phone on the same WiFi)"
+    fi
+
+    # QR code (mobile access) — best effort via qrencode
+    if command -v qrencode &>/dev/null && [[ -n "$LOCAL_APP_LAN_URL" ]]; then
+        echo ""
+        echo -e "  ${CYAN}QR (LAN URL):${NC}"
+        qrencode -t ANSIUTF8 "$LOCAL_APP_LAN_URL" 2>/dev/null || true
+    elif [[ -n "$LOCAL_APP_LAN_URL" ]]; then
+        info "Install qrencode for terminal QR code:"
+        if [[ "$OS" == "Darwin" ]]; then
+            info "  brew install qrencode"
+        else
+            info "  sudo apt-get install qrencode  (or your distro equivalent)"
+        fi
+    fi
+
+    echo ""
+    echo -e "  ${GREEN}✓${NC} App dir       $LAEKA_APP_DIR"
+    echo -e "  ${GREEN}✓${NC} Logs          $LAEKA_LOG_DIR/laeka-local.log"
+    if [[ "$OS" == "Darwin" ]]; then
+        echo -e "  ${CYAN}Stop:${NC}  launchctl unload ~/Library/LaunchAgents/com.laeka.local.plist"
+        echo -e "  ${CYAN}Start:${NC} launchctl load -w ~/Library/LaunchAgents/com.laeka.local.plist"
+    elif [[ "$OS" == "Linux" ]]; then
+        echo -e "  ${CYAN}Stop:${NC}  systemctl --user stop laeka-local.service"
+        echo -e "  ${CYAN}Start:${NC} systemctl --user start laeka-local.service"
+    fi
+fi
+
 # ── Done ─────────────────────────────────────────────────────────────────────
 section "Installation complete"
 echo ""
@@ -432,8 +639,14 @@ echo -e "  ${GREEN}✓${NC} Canonical    v$REMOTE_VERSION ($COUNT files)"
 echo -e "  ${GREEN}✓${NC} Distribution $LAEKA_HOME"
 echo -e "  ${GREEN}✓${NC} Memory       $MEMORY_DIR"
 echo -e "  ${GREEN}✓${NC} Hook         $CLIENT_HOOK"
+if [[ -n "$LOCAL_APP_URL" ]]; then
+    echo -e "  ${GREEN}✓${NC} Local app    $LOCAL_APP_URL"
+fi
 echo ""
 echo -e "  ${CYAN}Next:${NC} Launch Claude Code — Laeka loads automatically at session start."
+if [[ -n "$LOCAL_APP_URL" ]]; then
+    echo -e "         Or open ${CYAN}$LOCAL_APP_URL${NC} for the web chat UI."
+fi
 echo ""
 echo -e "  Update:     bash $LAEKA_DIST/update-laeka.sh"
 echo -e "  Uninstall:  bash $LAEKA_DIST/uninstall-laeka.sh"

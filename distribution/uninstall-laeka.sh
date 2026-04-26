@@ -28,6 +28,11 @@ echo "  • $LAEKA_HOME"
 echo "  • $MEMORY_DIR"
 echo "  • $CLIENT_HOOK"
 echo "  • SessionStart hook from ~/.claude/settings.json"
+echo "  • Local app at ~/.laeka/app/ (if installed) + service file (LaunchAgent/systemd)"
+echo ""
+echo "Preserved by default (pass --purge to remove):"
+echo "  • ~/.laeka/data.db (chat history)"
+echo "  • ~/.laeka/user.json (preferences)"
 echo ""
 
 # Confirm unless --confirm flag provided
@@ -82,6 +87,54 @@ if [[ -d "$MEMORY_DIR" ]]; then
     ok "Removed: $MEMORY_DIR"
 else
     info "Memory directory not found — skipping"
+fi
+
+# ── Remove local app + service (if installed) ───────────────────────────────
+section "Removing local app + auto-start service"
+
+LAEKA_APP_DIR="$HOME/.laeka/app"
+OS="$(uname -s)"
+
+if [[ "$OS" == "Darwin" ]]; then
+    PLIST_PATH="$HOME/Library/LaunchAgents/com.laeka.local.plist"
+    if [[ -f "$PLIST_PATH" ]]; then
+        launchctl unload "$PLIST_PATH" 2>/dev/null || true
+        rm -f "$PLIST_PATH"
+        ok "LaunchAgent removed: $PLIST_PATH"
+    else
+        info "No LaunchAgent found — skipping"
+    fi
+elif [[ "$OS" == "Linux" ]]; then
+    UNIT_PATH="$HOME/.config/systemd/user/laeka-local.service"
+    if [[ -f "$UNIT_PATH" ]]; then
+        systemctl --user stop laeka-local.service 2>/dev/null || true
+        systemctl --user disable laeka-local.service 2>/dev/null || true
+        rm -f "$UNIT_PATH"
+        systemctl --user daemon-reload 2>/dev/null || true
+        ok "systemd unit removed: $UNIT_PATH"
+    else
+        info "No systemd unit found — skipping"
+    fi
+fi
+
+if [[ -d "$LAEKA_APP_DIR" ]]; then
+    rm -rf "$LAEKA_APP_DIR"
+    ok "Removed: $LAEKA_APP_DIR"
+else
+    info "Local app dir not found — skipping"
+fi
+
+# Note: ~/.laeka/data.db (SQLite) + ~/.laeka/user.json + logs are preserved by default.
+# Pass --purge to remove them too.
+if [[ "${1:-}" == "--purge" || "${2:-}" == "--purge" ]]; then
+    if [[ -d "$HOME/.laeka" ]]; then
+        rm -rf "$HOME/.laeka"
+        ok "Purged: ~/.laeka (data.db, user.json, logs)"
+    fi
+else
+    if [[ -d "$HOME/.laeka" ]] && find "$HOME/.laeka" -mindepth 1 -print -quit 2>/dev/null | grep -q .; then
+        warn "Preserved: ~/.laeka/ (chat history + user prefs). Pass --purge to delete."
+    fi
 fi
 
 # ── Remove distribution ──────────────────────────────────────────────────────
