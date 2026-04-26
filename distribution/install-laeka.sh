@@ -322,6 +322,17 @@ if [[ -f "$CANONICAL" ]]; then
     cat "$CANONICAL"
     echo ""
 fi
+
+# Inject user preferred name if provided
+if [[ -f "$HOME/.claude/laeka/user.json" ]]; then
+    PREFERRED_NAME=$(jq -r '.preferred_name // ""' "$HOME/.claude/laeka/user.json" 2>/dev/null)
+    if [[ -n "$PREFERRED_NAME" ]]; then
+        echo ""
+        echo "## User preferred name"
+        echo ""
+        echo "L'user humain de cette session se nomme **$PREFERRED_NAME**. Utilise ce nom dans le vocative quand approprié (chaleur, intimité). Sinon, adresse directe sans vocative."
+    fi
+fi
 HOOK_SCRIPT
 
 chmod +x "$CLIENT_HOOK"
@@ -344,6 +355,31 @@ else
     ok "Hook registered in ~/.claude/settings.json"
     info "settings.json backup: $CLAUDE_SETTINGS${BACKUP_SUFFIX}"
 fi
+
+# ── Step 4 — Capture preferred name → user.json ─────────────────────────────
+section "Personalisation (optionnel)"
+
+echo ""
+echo "Bhairavi peut t'appeler par ton nom préféré quand le vocative apporte de la chaleur."
+echo "(Laisse vide pour adresse directe sans nom — toujours acceptable.)"
+echo ""
+
+if [[ -z "${LAEKA_PREFERRED_NAME:-}" ]]; then
+    if [[ -e /dev/tty ]]; then
+        read -rp "  Comment veux-tu que Bhairavi t'appelle ? (Enter = pas de vocative) : " LAEKA_PREFERRED_NAME < /dev/tty
+    fi
+fi
+
+mkdir -p "$HOME/.claude/laeka"
+cat > "$HOME/.claude/laeka/user.json" <<JSON
+{
+  "preferred_name": "${LAEKA_PREFERRED_NAME:-}",
+  "email": "${LAEKA_EMAIL:-}",
+  "installed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+JSON
+chmod 600 "$HOME/.claude/laeka/user.json"
+ok "User config written: ~/.claude/laeka/user.json"
 
 # ── Done ─────────────────────────────────────────────────────────────────────
 section "Installation complete"
