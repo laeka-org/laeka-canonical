@@ -166,10 +166,10 @@ if [[ -z "$SESSION_TOKEN" ]]; then
         info "Phase 1 early access — invite required."
         info "Get yours at: https://laeka.ai/early-access"
         echo ""
-        read -rp "  Email: " LAEKA_EMAIL
+        read -rp "  Email: " LAEKA_EMAIL < /dev/tty
     fi
     if [[ -z "${LAEKA_INVITE:-}" ]]; then
-        read -rp "  Invite token: " LAEKA_INVITE
+        read -rp "  Invite token: " LAEKA_INVITE < /dev/tty
     fi
 
     info "Validating invite..."
