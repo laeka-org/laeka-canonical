@@ -60,7 +60,11 @@ echo ""
 command -v claude &>/dev/null || { err "Claude Code CLI not found. Install: https://claude.ai/code"; exit 1; }
 ok "Claude Code: $(claude --version 2>/dev/null | head -1 || echo 'installed')"
 
-[[ -f "$CLAUDE_SETTINGS" ]] || { err "~/.claude/settings.json not found. Launch Claude Code once to initialise."; exit 1; }
+if [[ ! -f "$CLAUDE_SETTINGS" ]]; then
+    mkdir -p "$HOME/.claude"
+    echo "{}" > "$HOME/.claude/settings.json"
+    ok "Bootstrap empty ~/.claude/settings.json (Claude Code first-run)"
+fi
 ok "~/.claude/settings.json found"
 
 command -v jq &>/dev/null || {
