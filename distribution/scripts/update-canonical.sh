@@ -16,7 +16,7 @@
 
 set -euo pipefail
 
-LAEKA_API_BASE="${LAEKA_API_BASE:-https://laeka.ai}"
+LAEKA_API_BASE="${LAEKA_API_BASE:-https://api.laeka.ai}"
 LAEKA_STATE="$HOME/.claude/projects/laeka"
 INSTALL_TOKEN_FILE="$LAEKA_STATE/.install-token"
 LOCAL_MANIFEST="$LAEKA_STATE/.canonical-manifest.json"

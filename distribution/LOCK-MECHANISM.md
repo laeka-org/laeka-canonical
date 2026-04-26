@@ -1,6 +1,6 @@
 # Laeka Canonical Lock Mechanism (Phase B)
 
-Phase B replaces the previous repo-bake-in pattern with **server-side canonical delivery**. The canonical content is no longer distributed in this public repo — it is fetched at install time from `laeka.ai/v1/brain/canonical/*` over an authenticated session.
+Phase B replaces the previous repo-bake-in pattern with **server-side canonical delivery**. The canonical content is no longer distributed in this public repo — it is fetched at install time from `api.laeka.ai/v1/brain/canonical/*` over an authenticated session.
 
 ## What's protected
 
@@ -173,7 +173,7 @@ A: One invite = one machine_uuid (Phase 1). For each additional machine, request
 | Version | Date | Note |
 |---------|------|------|
 | 1.0.0 | 2026-04-25 | Initial — repo-bake-in (Phase A) |
-| 2.0.0 | 2026-04-26 | Phase B — server-side delivery via JWT-authed laeka.ai/v1/brain/canonical/* |
+| 2.0.0 | 2026-04-26 | Phase B — server-side delivery via JWT-authed api.laeka.ai/v1/brain/canonical/* |
 
 ## V2 roadmap
 

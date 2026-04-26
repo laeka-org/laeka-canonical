@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # install-laeka.sh — Laeka Claude Code Installer (Phase B)
-# Server-side canonical delivery via mcp.laeka.ai (laeka.ai/v1/brain/canonical).
+# Server-side canonical delivery via api.laeka.ai/v1/brain/canonical.
 # Fetches signed manifest + bundle, verifies hashes, installs to ~/.claude/projects/laeka/memory/.
 #
 # Usage:
@@ -14,7 +14,7 @@
 set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
-LAEKA_API_BASE="${LAEKA_API_BASE:-https://laeka.ai}"
+LAEKA_API_BASE="${LAEKA_API_BASE:-https://api.laeka.ai}"
 LAEKA_REPO="https://github.com/laeka-org/laeka-canonical.git"
 LAEKA_REPO_TARBALL="https://github.com/laeka-org/laeka-canonical/archive/refs/heads/main.tar.gz"
 LAEKA_HOME="$HOME/laeka-canonical-distribution"
