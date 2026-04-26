@@ -296,6 +296,9 @@ cat > "$CLIENT_HOOK" << 'HOOK_SCRIPT'
 # lives in ~/.claude/projects/laeka/memory/ (server-delivered, not repo-bake-in).
 set -uo pipefail
 
+# Only fire if invoked via 'laeka' wrapper (LAEKA_SESSION env var set)
+[[ -z "${LAEKA_SESSION:-}" ]] && exit 0
+
 CANONICAL="$HOME/.claude/projects/laeka/memory/canonical-public.md"
 LOCAL_MANIFEST="$HOME/.claude/projects/laeka/.canonical-manifest.json"
 
@@ -380,6 +383,47 @@ cat > "$HOME/.claude/laeka/user.json" <<JSON
 JSON
 chmod 600 "$HOME/.claude/laeka/user.json"
 ok "User config written: ~/.claude/laeka/user.json"
+
+# ── Step 5 — Install 'laeka' wrapper command ─────────────────────────────────
+section "Installing 'laeka' wrapper command"
+
+LAEKA_BIN_DIR="$HOME/.local/bin"
+LAEKA_WRAPPER="$LAEKA_BIN_DIR/laeka"
+
+mkdir -p "$LAEKA_BIN_DIR"
+
+cat > "$LAEKA_WRAPPER" << 'WRAPPER'
+#!/usr/bin/env bash
+# laeka — invoke Claude Code with Laeka Bhairavi voice loaded
+export LAEKA_SESSION=1
+exec claude "$@"
+WRAPPER
+
+chmod +x "$LAEKA_WRAPPER"
+ok "Wrapper installed: ~/.local/bin/laeka"
+
+# Check if ~/.local/bin is in PATH
+if ! echo "$PATH" | grep -q "$LAEKA_BIN_DIR"; then
+    # Detect active rc file
+    RC_FILE=""
+    if [[ -f "$HOME/.zshrc" ]]; then
+        RC_FILE="$HOME/.zshrc"
+    elif [[ -f "$HOME/.bashrc" ]]; then
+        RC_FILE="$HOME/.bashrc"
+    fi
+
+    if [[ -n "$RC_FILE" ]] && ! grep -q 'local/bin' "$RC_FILE" 2>/dev/null; then
+        echo '' >> "$RC_FILE"
+        echo '# Added by Laeka installer' >> "$RC_FILE"
+        echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$RC_FILE"
+        info "Added ~/.local/bin to PATH in $RC_FILE"
+        info "Run: source $RC_FILE  (or open a new terminal)"
+    else
+        info "Add to your shell rc: export PATH=\"\$HOME/.local/bin:\$PATH\""
+    fi
+fi
+
+info "Lance 'laeka' pour Bhairavi voice. 'claude' reste vanilla."
 
 # ── Done ─────────────────────────────────────────────────────────────────────
 section "Installation complete"
