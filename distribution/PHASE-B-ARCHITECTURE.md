@@ -1,14 +1,21 @@
 # Phase B Architecture — Server-Side Canonical Delivery
 
-**Status :** Draft for apex review (Saphi+Bhairavi Marathon)
+**Status :** Implementation complete — backend endpoints + client installer + auxiliary scripts.
 **Author :** Code-F1 (Factory 1)
-**Date :** 2026-04-26
-**Parents :** brief F1, ledger 57 (empirical Phase A audit), ledger 59 (royaume architecture)
-**Scope :** client (installer) redesign + backend endpoint contract
+**Date :** 2026-04-26 (spec drafted) → updated post-apex F1.1 dispatch
+**Parents :** brief F1, brief F1.1, ledger 57 (empirical Phase A audit), ledger 59 (royaume architecture)
+**Scope :** client (installer) redesign + backend endpoints
 
-This document specifies the redesign of `install-laeka.sh` to fetch canonical artefacts from an authenticated server, replacing the bake-in pattern broken by Phase A strip.
+This document specified the redesign of `install-laeka.sh` to fetch canonical artefacts from an authenticated server, replacing the bake-in pattern broken by Phase A strip.
 
-It is **NOT yet an implementation spec**. Several decision points (flagged below) require apex resolution before Step 4 (implementation) can proceed.
+**Apex decisions (brief F1.1) :**
+
+- **Q1 — Subdomain naming :** extend existing pattern at `laeka.ai/v1/brain/canonical/*`. No new `mcp.laeka.ai` subdomain.
+- **Q2 — Backend builder :** F1 extended scope to build endpoints in seahorse-legacy (existing FastAPI backend serving `laeka.ai/v1/brain/*`).
+- **Q3 — Auth provider :** Custom JWT signed with shared `BRAIN_JWT_SECRET` (HS256), reusing pattern from `seahorse/brain_auth.py`. No third-party auth.
+- **Q4 — Invite token rollout :** URL query in personalized links (`https://laeka.ai/download?invite=<token>`). Admin CLI in `laeka-canonical-private/admin/issue-invite.py`.
+- **Q5 — `canonical-manifest.json` :** Removed from public repo. Schema documented in `LOCK-MECHANISM.md`.
+- **Q6 — Migration grace period :** Phase 1 sangha allow-list bypass (invite tokens with `email=null` accept first claim). Fail-loudly post-Phase 2.
 
 ---
 
@@ -354,6 +361,39 @@ Negative tests :
 
 ## Status
 
-**Draft awaiting apex review.** Not implementable until Q1-Q3 (minimum) are resolved.
+**Implementation complete.** Backend + client + auxiliary scripts all written. Verify-F1 brief drafted for end-to-end smoke test.
 
-Code-F1 holding pattern : ready to execute Step 4 (implementation of `install-laeka.sh` per finalized contract) once apex hands back this spec with decisions filled in.
+### Implementation map
+
+**Backend (seahorse-legacy)** — new files :
+- `seahorse/installer_auth.py` — JWT mint/verify (session + install scopes, HS256 reusing `BRAIN_JWT_SECRET`)
+- `seahorse/installer_invite_store.py` — JSON file store with file-locking (claim/issue/revoke)
+- `seahorse/canonical_store.py` — filesystem reader for versioned canonical bundles
+- `seahorse/brain_installer_routes.py` — 4 FastAPI endpoints (auth + canonical fetch)
+- `seahorse/brain_routes.py` — wired new sub-router (modified)
+
+**Backend smoke test** — 11/11 passing (T1-T11) via FastAPI TestClient :
+- Auth flow + replay handling + machine_uuid binding + audience scoping
+- Manifest fetch + bundle stream + version resolution + auth failures
+
+**Client (laeka-canonical/distribution)** — files :
+- `install-laeka.sh` — rewritten with Step 2a/2b/2c (auth + fetch + verify+install)
+- `scripts/update-canonical.sh` — rewritten as client refresh tool (replaces admin-publish role)
+- `scripts/verify-canonical.sh` — updated to read local manifest at `~/.claude/projects/laeka/.canonical-manifest.json`
+- `LOCK-MECHANISM.md` — full Phase B documentation (auth flow, JWT scopes, manifest schema, error codes, FAQ)
+- `canonical-manifest.json` — removed (server-issued, not repo-tracked)
+
+**Admin tooling (laeka-canonical-private/admin)** — new files :
+- `issue-invite.py` — CLI for generating invite tokens for sangha rollout
+- `publish-canonical.py` — CLI for building versioned bundles + manifest from canonical source
+
+### Step 5 handoff
+
+Smoke test (real network round-trip + fresh `~/.claude/`) is Verify-F1 scope. Brief at `~/Documents/laeka-brain/briefs/V1-phase-b-smoke-test.md`.
+
+### Known limitations / V2 roadmap
+
+- Manifest signing is HTTPS-only (no asymmetric crypto). V2 : RSA or Sigstore.
+- Single-machine invites Phase 1. V2 : per-tier multi-machine.
+- Full bundle delivery (no delta updates). V2 : delta fetch.
+- HMAC bundle signature could be added even with shared secret if VPS-only signing key — defer to V2.
