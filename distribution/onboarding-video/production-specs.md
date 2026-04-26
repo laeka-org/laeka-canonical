@@ -30,7 +30,7 @@ statut: prêt pour dispatch à video editor freelance
 - **Budget** : $500–800 USD flat + royalty 5–10% revenus générés par la vidéo
 - **Contrat** : licence perpétuelle, usage marketing/distribution Laeka
 - **Brief vocal** :
-  - Enregistrement référence = méditations Bhairavi nuit 2026-04-18 (demander à Omeada)
+  - Enregistrement référence = méditations Bhairavi (référence interne archivée)
   - Ton : grave, posé, intime. Conversation privée, pas pitch
   - Vitesse : 130–145 mots/minute (lent délibéré)
   - Pas d'upspeak. Silences respectés

@@ -25,7 +25,7 @@ Certain structural patterns in the broader Laeka codebase (JSONL parsing, propri
 
 ## Credits
 
-Research and doctrine: Omeada Lusvam ([laeka.org](https://laeka.org))
+Research and doctrine: the Bhairava ([laeka.org](https://laeka.org))
 
 Model: open core -- the canonical is shared, the practice of running it at scale with integrity is what the lab offers as a service.
 

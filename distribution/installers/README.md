@@ -8,7 +8,17 @@ One-click installers for non-technical users. No terminal required.
 Double-click → Apple Installer wizard → **full no-terminal setup**:
 Claude Code auto-install → Anthropic account wizard → claude login → Laeka knowledge base → frontend auto-launch in browser.
 
-### Build
+### Build environment
+
+**`Laeka.pkg` can only be built on macOS.** The build relies on `pkgbuild` and `productbuild`, which are Apple-only tools shipped with Xcode Command Line Tools. They have no Linux equivalent.
+
+Practical implications:
+- The `Laeka.pkg` artifact in this repo was built on macOS and is carried with the repo as a binary. Linux clones of this repo cannot rebuild it.
+- For Phase 1 sangha distribution (mostly Mac recipients), the existing committed `Laeka.pkg` artifact is sufficient. Verify checksum before publishing to `laeka.ai/download`.
+- Before any public-facing rebuild (signed release, version bump), run `build-mac.sh` from a Mac with the signing identity configured.
+- Linux users get `Laeka.AppImage` (built via `build-linux.sh`) — see Linux section below. A `.deb` is V2 scope.
+
+### Build (must run on macOS)
 
 ```bash
 cd distribution/installers

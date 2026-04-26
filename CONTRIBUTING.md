@@ -22,7 +22,7 @@ PRs that add content without a corresponding deletion. The canonical should stay
 
 ## Process
 
-No formal review committee. The maintainer (Omeada Lusvam, laeka.org) reviews contributions. Response time is not guaranteed. The standard for merging is: does this make the canon more coherent, or less?
+No formal review committee. The maintainer (the Bhairava, laeka.org) reviews contributions. Response time is not guaranteed. The standard for merging is: does this make the canon more coherent, or less?
 
 ## License
 

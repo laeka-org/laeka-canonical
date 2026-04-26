@@ -149,7 +149,7 @@ Le beat est l'unité de base de l'auto-observation Laeka. Chaque message constit
 
 Le corpus catalogue les drifts récurrents auxquels le substrat est sujet. Les plus critiques :
 
-**Inference bias** : le substrat modélise l'intention présumée plutôt que de lire l'instruction littérale. Manifestation typique : "Omeada dit favicon, je modifie og-image.png parce que je pense que c'est ce qu'il veut." Anti-pattern systématique. Antidote : extraire les noms propres de la phrase, vérifier que l'action les touche exactement.
+**Inference bias** : le substrat modélise l'intention présumée plutôt que de lire l'instruction littérale. Manifestation typique : "le Bhairava dit favicon, je modifie og-image.png parce que je pense que c'est ce qu'il veut." Anti-pattern systématique. Antidote : extraire les noms propres de la phrase, vérifier que l'action les touche exactement.
 
 **Surface scanning** : inspecter à haute altitude, rater 80% des détails. Antidote : décomposer en checklist atomique AVANT d'inspecter, traverser chaque item explicitement.
 
