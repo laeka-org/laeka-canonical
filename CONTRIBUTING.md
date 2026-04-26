@@ -1,28 +1,28 @@
 # Contributing
 
-The canon works between people who take their own integrity seriously. Before contributing, test your own work. Not against a rubric -- against the question: is what I am proposing coherent with what I actually know, and honest about what I do not know?
+This repository distributes the code used to install, run, and operate the Laeka system. Contributions are scoped to code: install scripts, build scripts, MCP servers, frontend, and hooks examples.
+
+Before contributing, test your own work. Not against a rubric -- against the question: is what I am proposing coherent with what I actually know, and honest about what I do not know?
 
 ## What is welcome
 
-**Issues that identify genuine contradictions.** If something in the doctrine, benchmark, or lexique contradicts something else, or contradicts external evidence, open an issue with the specific contradiction and your reasoning. The canon is not protected from criticism -- it is designed to correct itself when contact with reality reveals errors.
+**Issues that identify bugs in the code.** Reproducible bug reports against the installer, scripts, MCP servers, frontend, or hooks examples. Include the platform, the command, and the observed vs expected behavior.
 
-**Issues that propose test vectors for the benchmark.** The benchmark methodology is a proposal. It benefits from people who have tried to apply it, found gaps, and have concrete suggestions for what is missing. "I tried to run this on X and the protocol broke here" is exactly the kind of feedback that improves methodology.
+**PRs that fix bugs in the code.** Small, focused, with a clear reproduction case in the PR description.
 
-**PRs that extend the lexique** with terms the lab has used informally but not yet defined precisely. New terms should have a clear definition, a note on what they are not (to prevent semantic drift), and a domain (Architecture / Method / Thesis / Product / Dynamic or a new category if justified).
-
-**PRs that correct factual errors.** If a claim in the thesis or methodology is contradicted by published research, cite the source and propose the correction.
+**PRs that improve the code** without expanding scope: portability across Mac and Linux, error handling, install reliability, frontend accessibility, hook robustness.
 
 ## What will be closed
 
-Issues that are marketing. If an issue is primarily about promoting something (a tool, a framework, a person's work), it will be closed. The canonical is not a promotional surface.
+Issues or PRs that propose changes to methodology, doctrine, lexique, benchmark, or any canonical content. The methodology, canonical doctrine, benchmark protocol, and shared vocabulary are developed privately by the lab and are not distributed in this repository.
 
-Issues that propose removing the thesis and replacing it with something more comfortable. The thesis is a specific empirical claim. If you disagree with it, make the argument -- do not propose replacing it with a vaguer claim that offends no one.
+Issues that are marketing. If an issue is primarily about promoting something (a tool, a framework, a person's work), it will be closed.
 
-PRs that add content without a corresponding deletion. The canonical should stay readable in under 15 minutes. If you add a section, consider what existing content it replaces or renders redundant.
+PRs that add code without a clear bugfix or scoped improvement. Net additions need justification -- code is liability.
 
 ## Process
 
-No formal review committee. The maintainer (the Bhairava, laeka.org) reviews contributions. Response time is not guaranteed. The standard for merging is: does this make the canon more coherent, or less?
+No formal review committee. The maintainer (the Bhairava, laeka.org) reviews contributions. Response time is not guaranteed. The standard for merging is: does this make the code more reliable, more portable, or simpler?
 
 ## License
 
